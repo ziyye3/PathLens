@@ -1,0 +1,24 @@
+version: 1
+contexts:
+  - id: aws-s3-dangling-alias
+    service: AWS S3
+    rule_ids: [known-service-review, dangling-known-service]
+    title: Review an S3 DNS alias and its matching bucket
+    description: A DNS alias that points to S3 without a matching bucket can permit another AWS user to create that bucket and publish content under the alias.
+    applicability: An S3 alias was observed; the existence or ownership of a matching bucket has not been checked.
+    action: Verify the matching bucket and its owner; remove or change stale aliases when appropriate.
+    limitations: DNS observations alone cannot determine whether a matching bucket exists or whether takeover is possible.
+    source_name: AWS S3 documentation
+    source_url: https://docs.aws.amazon.com/AmazonS3/latest/userguide/VirtualHosting.html
+    reviewed_at: '2026-10-30'
+  - id: aws-elastic-beanstalk-dangling-alias
+    service: AWS Elastic Beanstalk
+    rule_ids: [known-service-review, dangling-known-service]
+    title: Review an Elastic Beanstalk DNS alias
+    description: AWS warns that an available hostname can be reused after an environment is terminated and advises removing stale DNS mappings.
+    applicability: An Elastic Beanstalk alias was observed; the environment state and ownership have not been checked.
+    action: Verify the environment and DNS mapping; remove stale mappings when appropriate.
+    limitations: An NXDOMAIN answer or a service match alone does not prove that the environment is terminated or reusable.
+    source_name: AWS Elastic Beanstalk documentation
+    source_url: https://docs.aws.amazon.com/elasticbeanstalk/latest/dg/customdomains.html
+    reviewed_at: '2026-10-30'

@@ -21,6 +21,9 @@ def markdown(report: Report) -> str:
         f"- Collection mode: {_text(report.collection_mode)}",
         f"- Observed at: {_text(report.observed_at.isoformat())}",
         "- Scope: public observations; ownership and vulnerabilities are not confirmed.",
+        f"- Threat feed: {_text(report.threat_feed.status)}; "
+        f"{report.threat_feed.indicator_count} indicators; "
+        f"{report.threat_feed.match_count} matches.",
         "",
         "## Assets",
     ]
@@ -60,6 +63,38 @@ def markdown(report: Report) -> str:
                 )
                 lines.append(
                     f"- {_text(evidence.source)}: {_text(evidence.description)}{reference}{time}"
+                )
+        for context in asset.threat_context:
+            lines += [
+                "",
+                f"#### Threat context: {_text(context.title)}",
+                "",
+                _text(context.description),
+                "",
+                f"Applicability: {_text(context.applicability)}",
+                f"Action: {_text(context.action)}",
+                f"Limitations: {_text(context.limitations)}",
+                f"Rule: {_text(context.matched_rule_id)}",
+                f"Source: {_text(context.source_name)} ({_text(context.source_url)}); "
+                f"reviewed {_text(context.reviewed_at)}",
+            ]
+        for match in asset.indicator_matches:
+            lines += [
+                "",
+                f"#### Indicator match [{_text(match.status.upper())}]",
+                "",
+                f"- {_text(match.indicator_type)}: `{_text(match.value)}` "
+                f"(observed as {_text(match.observed_as)})",
+                f"- Source: {_text(match.source_name)} ({_text(match.source_url)})",
+                f"- Feed claim: {_text(match.description)}",
+                f"- Valid: {_text(match.valid_from.isoformat())} "
+                f"to {_text(match.valid_until.isoformat())}",
+                "- Exact value match only; shared infrastructure and historical data "
+                "can cause false positives.",
+            ]
+            for evidence in match.evidence:
+                lines.append(
+                    f"- Observation: {_text(evidence.source)}: {_text(evidence.description)}"
                 )
     if report.warnings:
         lines += ["", "## Collection warnings", ""]

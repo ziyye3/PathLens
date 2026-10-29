@@ -156,6 +156,42 @@ class Finding(StrictModel):
     evidence: list[Evidence] = Field(min_length=1)
 
 
+class ThreatContext(StrictModel):
+    id: str
+    title: str
+    description: str
+    applicability: str
+    action: str
+    limitations: str
+    source_name: str
+    source_url: str
+    reviewed_at: str
+    matched_rule_id: str
+
+
+class IndicatorMatch(StrictModel):
+    indicator_id: str
+    indicator_type: Literal["domain", "ip"]
+    value: str
+    observed_as: Literal["asset_name", "cname_target", "address"]
+    status: Literal["active", "expired", "not_yet_valid"]
+    source_name: str
+    source_url: str
+    description: str
+    valid_from: datetime
+    valid_until: datetime
+    evidence: list[Evidence] = Field(min_length=1)
+
+
+class ThreatFeedSummary(StrictModel):
+    status: Literal["not_supplied", "loaded"]
+    source_name: str | None = None
+    source_url: str | None = None
+    generated_at: datetime | None = None
+    indicator_count: int = 0
+    match_count: int = 0
+
+
 class Asset(StrictModel):
     name: str
     discovered_by: list[str]
@@ -165,6 +201,8 @@ class Asset(StrictModel):
     priority: Literal["high", "medium", "low", "info", "unknown"]
     findings: list[Finding]
     warnings: list[str] = Field(default_factory=list)
+    threat_context: list[ThreatContext] = Field(default_factory=list)
+    indicator_matches: list[IndicatorMatch] = Field(default_factory=list)
 
 
 class Report(StrictModel):
@@ -176,6 +214,9 @@ class Report(StrictModel):
     assets: list[Asset]
     warnings: list[str]
     limitations: list[str]
+    threat_feed: ThreatFeedSummary = Field(
+        default_factory=lambda: ThreatFeedSummary(status="not_supplied")
+    )
 
     def as_dict(self) -> dict[str, Any]:
         return self.model_dump(mode="json")

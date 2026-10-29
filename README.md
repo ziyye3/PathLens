@@ -7,6 +7,8 @@ PathLens는 공개 인증서와 DNS 정보로 도메인에서 AWS 서비스까�
 - crt.sh 인증서 기록에서 입력 도메인 아래의 이름을 찾고 공개 DNS 리졸버에 CNAME, A, AAAA 레코드를 질의합니다.
 - AWS의 공개 IP 대역과 AWS 서비스 도메인 특징을 대조합니다.
 - YAML 규칙 세 개로 알려진 서비스 연결, NXDOMAIN 연결, AWS 인프라 단서를 구분합니다.
+- AWS 문서에 근거한 S3·Elastic Beanstalk 위험 맥락을 해당 관찰과 연결합니다.
+- 선택적으로 로컬 TI 피드 또는 Feodo Tracker 공개 IP 목록과 정확히 일치하는 값을 표시합니다.
 - JSON 보고서, Markdown 보고서, 원본 관찰 스냅샷을 출력합니다.
 - MCP stdio 도구로 동일한 분석을 제공합니다.
 
@@ -74,6 +76,46 @@ MCP 서버는 기본적으로 stdio를 사용합니다. 로그와 프로토콜 �
 - `analyze_snapshot`: JSON 스냅샷을 네트워크 없이 분석합니다.
 - `scan_domain`: 도메인과 `authorized: true`를 전달한 경우 공개 정보 조회를 수행합니다. MCP 호스트에서는 조회 전에 사용자가 도메인과 외부 전송을 확인해야 합니다.
 
+두 도구 모두 `threat_feed` 인자에 아래 형식의 JSON 객체를 선택적으로 전달할 수 있습니다. 파일 경로를 전달하거나 피드를 자동으로 내려받지 않습니다. 반환값의 `threat_feed`, 자산별 `threat_context`와 `indicator_matches`를 사용할 수 있습니다.
+
+## 위협 인텔리전스
+
+PathLens는 두 종류의 정보를 구분합니다.
+
+1. **위협 맥락**: AWS 공식 문서에서 확인한 S3·Elastic Beanstalk DNS 연결 관련 주의사항입니다. 해당 서비스의 관찰과 규칙이 맞을 때 출처와 검토일을 함께 표시합니다. 버킷이나 환경이 실제 존재하는지 확인하지 않습니다.
+2. **지표 일치**: 사용자가 제공한 TI 피드의 도메인 또는 IP가 관찰된 값과 정확히 같을 때 표시합니다. 도메인은 하위 도메인으로 확장하지 않습니다. CNAME 대상과 IP는 공유 인프라일 수 있고, 일치는 침해나 공격자 귀속의 증거가 아닙니다.
+
+피드를 제공하지 않으면 `not_supplied`로 표시합니다. 빈 피드·일치 없음은 안전 판정이 아닙니다. 각 지표는 출처, 유효 시작과 종료 시각, 관찰 근거, 일치 상태를 갖습니다. `active`는 설정된 유효 기간에 해당한다는 뜻일 뿐 현재 악성 활동을 확인했다는 뜻이 아닙니다. 만료되거나 관찰 시점 전에 유효하지 않은 지표도 그 상태를 명시하여 보여줍니다. TI 일치만으로 기존 자산 우선순위를 자동으로 높이지 않습니다.
+
+### 가상 TI 예제
+
+예제는 모두 가상의 지표이며 실제 위협을 의미하지 않습니다.
+
+```bash
+pathlens validate-feed examples/threat-feed.json
+pathlens scan example.com --snapshot examples/sample.json \
+  --threat-feed examples/threat-feed.json --output pathlens-output/ti-example
+```
+
+### 실제 공개 TI 피드 받아오기
+
+사용자가 명령할 때만 Feodo Tracker의 추천 IP 목록을 받아 PathLens 형식으로 변환합니다. 대상 도메인은 Feodo에 전송하지 않습니다. 기존 파일은 덮어쓰지 않으므로 갱신할 때 새 파일명을 지정하세요. 자동 갱신은 구현되어 있지 않습니다.
+
+```bash
+pathlens update-feodo --output /tmp/pathlens-feodo-1.json
+pathlens validate-feed /tmp/pathlens-feodo-1.json
+pathlens scan YOUR-AUTHORIZED-DOMAIN --authorized \
+  --threat-feed /tmp/pathlens-feodo-1.json --output pathlens-output/live-ti
+```
+
+Feodo 변환의 유효 종료 시각은 **PathLens의 수집 후 24시간 보관 기준**이며, 제공자가 보장한 위협 종료 시각이 아닙니다. 원본의 마지막 온라인 날짜와 상태를 함께 표시합니다. IP 재할당, CDN 등으로 오탐이 생길 수 있으므로 수동 확인이 필요합니다. 피드가 비어 있거나 조회가 실패할 수 있으며, 받아오기 전 [제공자의 이용 조건](https://abuse.ch/terms-of-use/)을 확인하세요. 이 목록은 AWS 전용 목록이 아닙니다.
+
+### 자체 TI 피드
+
+`examples/threat-feed.json`을 참고해 UTF-8 JSON 파일을 만듭니다. `schema_version`, `source.name`, `source.url`(HTTPS), `generated_at`, `indicators`가 필요합니다. 각 지표에는 고유한 `id`, `type`(`domain` 또는 `ip`), `value`, `description`, 시간대가 포함된 `valid_from`과 `valid_until`을 입력합니다. 최대 25 MiB / 100,000개까지 허용하며 형식이 잘못되면 분석을 중단합니다. 출처는 파일 작성자가 제공하므로 신뢰성을 별도로 확인해야 합니다.
+
+현재는 PathLens 자체 JSON 형식과 Feodo 추천 목록만 지원합니다. STIX/TAXII, 다크웹 수집, 자동 보고서 수집, CVE를 자산에 자동 연결하는 기능은 아직 없습니다. 자산의 소유권, 실제 취약점이나 침해 여부도 확인하지 않습니다.
+
 ## 규칙과 위험 목록
 
 `src/pathlens/data/rules.yaml`에 세 규칙이 있고 `services.yaml`에 대조할 서비스가 있습니다. `--rules`로 YAML 규칙 파일을 지정할 수 있습니다. 실행 가능한 코드나 임의의 식은 지원하지 않습니다.
@@ -107,6 +149,8 @@ ruff check .
 - [AWS IP address ranges](https://docs.aws.amazon.com/vpc/latest/userguide/aws-ip-ranges.html)
 - [AWS S3 virtual hosting and DNS aliases](https://docs.aws.amazon.com/AmazonS3/latest/userguide/VirtualHosting.html)
 - [Can I Take Over XYZ?](https://github.com/EdOverflow/can-i-take-over-xyz)
+- [AWS Elastic Beanstalk domain names](https://docs.aws.amazon.com/elasticbeanstalk/latest/dg/customdomains.html)
+- [Feodo Tracker blocklists](https://feodotracker.abuse.ch/blocklist/)
 - [MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk)
 
 ## 라이선스

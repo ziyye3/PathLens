@@ -7,6 +7,7 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 SAMPLE = Path(__file__).parents[1] / "examples" / "sample.json"
+FEED = Path(__file__).parents[1] / "examples" / "threat-feed.json"
 
 
 def test_real_mcp_stdio_handshake_and_offline_tool():
@@ -22,6 +23,15 @@ def test_real_mcp_stdio_handshake_and_offline_tool():
             assert not result.isError
             assert result.structuredContent["domain"] == "example.com"
             assert result.structuredContent["collection_mode"] == "snapshot"
+            with_feed = await session.call_tool(
+                "analyze_snapshot",
+                {
+                    "snapshot": json.loads(SAMPLE.read_text()),
+                    "threat_feed": json.loads(FEED.read_text()),
+                },
+            )
+            assert not with_feed.isError
+            assert with_feed.structuredContent["threat_feed"]["match_count"] == 2
             unauthorized = await session.call_tool("scan_domain", {"domain": "example.com"})
             assert unauthorized.isError
             assert "authorization" in unauthorized.content[0].text.lower()

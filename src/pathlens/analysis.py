@@ -13,6 +13,14 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .models import Asset, DNSRecord, Evidence, Finding, Report, Snapshot, in_scope, normalize_name
+from .threat_intel import (
+    ThreatFeed,
+    contexts_for_matches,
+    feed_summary,
+    index_feed,
+    load_contexts,
+    match_indicators,
+)
 
 MAX_ASSETS = 200
 MAX_CNAME_HOPS = 8
@@ -166,9 +174,12 @@ def analyze(
     max_assets: int = 100,
     rules_path: Path | None = None,
     collection_mode: Literal["snapshot", "live"] = "snapshot",
+    threat_feed: ThreatFeed | None = None,
 ) -> Report:
     rules = load_rules(rules_path).rules
     services = load_services().services
+    contexts = load_contexts()
+    indicator_index = index_feed(threat_feed)
     names, limit_warnings = discover_names(snapshot, max_assets)
     records: dict[str, list[DNSRecord]] = defaultdict(list)
     for record in snapshot.dns_records:
@@ -320,6 +331,26 @@ def analyze(
                         ]
                     )
                 findings.append(_finding(rule, evidence))
+        observed = [("domain", name, "asset_name", discovery_evidence)]
+        for hop in chain[1:]:
+            hop_evidence = [
+                _dns_evidence(record) for record in cname_records if hop in record.values
+            ]
+            if hop_evidence:
+                observed.append(("domain", hop, "cname_target", hop_evidence))
+        for record in address_records:
+            for value in record.values:
+                observed.append(
+                    ("ip", str(ipaddress.ip_address(value)), "address", [_dns_evidence(record)])
+                )
+        indicator_matches = match_indicators(
+            observed, threat_feed, indicator_index, snapshot.observed_at
+        )
+        threat_context = contexts_for_matches(
+            contexts,
+            {service.name for _, service in matches},
+            {finding.rule_id for finding in findings},
+        )
         assets.append(
             Asset(
                 name=name,
@@ -334,6 +365,8 @@ def analyze(
                 ),
                 findings=findings,
                 warnings=warnings,
+                threat_context=threat_context,
+                indicator_matches=indicator_matches,
             )
         )
 
@@ -347,6 +380,9 @@ def analyze(
         collection_mode=collection_mode,
         assets=assets,
         warnings=warnings,
+        threat_feed=feed_summary(
+            threat_feed, sum(len(asset.indicator_matches) for asset in assets)
+        ),
         limitations=[
             "Public DNS and certificates do not prove asset ownership or "
             "the existence of a vulnerability.",
@@ -355,5 +391,7 @@ def analyze(
             "Public recursive DNS lookups may be forwarded to authoritative name servers.",
             "AWS IP ranges do not cover every AWS address or prove the end customer; "
             "data may be stale.",
+            "Indicator matches are contextual leads, not evidence of compromise or attribution. "
+            "Shared cloud IPs and stale indicators can cause false positives.",
         ],
     )
