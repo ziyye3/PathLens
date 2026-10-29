@@ -32,6 +32,22 @@ def test_real_mcp_stdio_handshake_and_offline_tool():
             )
             assert not with_feed.isError
             assert with_feed.structuredContent["threat_feed"]["match_count"] == 2
+            combined = await session.call_tool(
+                "analyze_snapshot",
+                {
+                    "snapshot": json.loads(SAMPLE.read_text()),
+                    "cve_observations": json.loads(
+                        (SAMPLE.parent / "cve-observations.json").read_text()
+                    ),
+                    "kev_catalog": json.loads((SAMPLE.parent / "kev-sample.json").read_text()),
+                    "exposure_observations": json.loads(
+                        (SAMPLE.parent / "exposure-observations.json").read_text()
+                    ),
+                },
+            )
+            assert not combined.isError
+            assert combined.structuredContent["cve_correlation"]["match_count"] == 1
+            assert combined.structuredContent["exposure_correlation"]["match_count"] == 1
             unauthorized = await session.call_tool("scan_domain", {"domain": "example.com"})
             assert unauthorized.isError
             assert "authorization" in unauthorized.content[0].text.lower()

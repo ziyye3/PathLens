@@ -1,0 +1,12 @@
+{
+  "schema_version": "1.0",
+  "observations": [
+    {
+      "asset": "cdn.example.com",
+      "category": "data_leak_claim",
+      "source_name": "Synthetic example only",
+      "source_url": "https://example.com/synthetic-claim",
+      "observed_at": "2026-10-14T00:00:00Z"
+    }
+  ]
+}

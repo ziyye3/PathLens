@@ -1,0 +1,18 @@
+{
+  "type": "bundle",
+  "id": "bundle--30c5e83a-76e4-43f7-9b36-25b3c82dc807",
+  "objects": [
+    {
+      "type": "indicator",
+      "spec_version": "2.1",
+      "id": "indicator--8f74d43f-c277-481c-8d99-ff8612d11650",
+      "created": "2026-01-01T00:00:00Z",
+      "modified": "2026-01-01T00:00:00Z",
+      "name": "Synthetic example only",
+      "pattern": "[domain-name:value = 'demo.cloudfront.net']",
+      "pattern_type": "stix",
+      "valid_from": "2026-01-01T00:00:00Z",
+      "valid_until": "2030-01-01T00:00:00Z"
+    }
+  ]
+}

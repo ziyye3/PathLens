@@ -76,7 +76,7 @@ MCP 서버는 기본적으로 stdio를 사용합니다. 로그와 프로토콜 �
 - `analyze_snapshot`: JSON 스냅샷을 네트워크 없이 분석합니다.
 - `scan_domain`: 도메인과 `authorized: true`를 전달한 경우 공개 정보 조회를 수행합니다. MCP 호스트에서는 조회 전에 사용자가 도메인과 외부 전송을 확인해야 합니다.
 
-두 도구 모두 `threat_feed` 인자에 아래 형식의 JSON 객체를 선택적으로 전달할 수 있습니다. 파일 경로를 전달하거나 피드를 자동으로 내려받지 않습니다. 반환값의 `threat_feed`, 자산별 `threat_context`와 `indicator_matches`를 사용할 수 있습니다.
+두 도구 모두 `threat_feed`, `cve_observations`, `kev_catalog`, `exposure_observations` 인자에 아래 형식의 JSON 객체를 선택적으로 전달할 수 있습니다. CVE 관찰값과 KEV 목록은 쌍으로 제공해야 합니다. 파일 경로를 전달하거나 피드를 자동으로 내려받지 않습니다. 반환값은 자산별 분석과 각 입력의 처리 상태를 포함합니다.
 
 ## 위협 인텔리전스
 
@@ -114,7 +114,54 @@ Feodo 변환의 유효 종료 시각은 **PathLens의 수집 후 24시간 보관
 
 `examples/threat-feed.json`을 참고해 UTF-8 JSON 파일을 만듭니다. `schema_version`, `source.name`, `source.url`(HTTPS), `generated_at`, `indicators`가 필요합니다. 각 지표에는 고유한 `id`, `type`(`domain` 또는 `ip`), `value`, `description`, 시간대가 포함된 `valid_from`과 `valid_until`을 입력합니다. 최대 25 MiB / 100,000개까지 허용하며 형식이 잘못되면 분석을 중단합니다. 출처는 파일 작성자가 제공하므로 신뢰성을 별도로 확인해야 합니다.
 
-현재는 PathLens 자체 JSON 형식과 Feodo 추천 목록만 지원합니다. STIX/TAXII, 다크웹 수집, 자동 보고서 수집, CVE를 자산에 자동 연결하는 기능은 아직 없습니다. 자산의 소유권, 실제 취약점이나 침해 여부도 확인하지 않습니다.
+### STIX·TAXII 입력
+
+STIX 2.1 bundle에서 단일 도메인·IPv4·IPv6의 정확한 일치 패턴만 변환합니다. 복합 패턴 등 지원하지 않는 객체는 건너뛰고 개수를 표시합니다. 폐기된 지표는 가져오지 않으며, 동일 ID의 여러 버전은 오류로 처리합니다. 공유 제한 표시가 있는 지표는 표시를 제거해 유출하지 않도록 전체 가져오기를 중단합니다. 유효 종료일이 없으면 시작일로부터 30일을 PathLens의 임시 기준으로 적용하고 설명에 표시합니다. 이것은 전체 STIX 표준 검증이나 전체 패턴 지원이 아닙니다.
+
+```bash
+pathlens import-stix examples/sample-stix.json --output /tmp/pathlens-stix-demo.json \
+  --source-name 'Synthetic example' --source-url https://example.com/stix
+```
+
+명시적으로 접근 허가된 공개 TAXII 2.1 collection의 `/objects/` HTTPS 주소도 입력할 수 있습니다. 현재 인증이 필요 없는 엔드포인트와 `next` 토큰 방식 페이지 이동만 지원합니다. 인증 정보나 쿼리 문자열을 URL에 넣을 수 없으며, 리디렉션은 따라가지 않습니다. 페이지가 불완전하거나 제한을 넘으면 가져오기를 중단합니다. 원격 TAXII 서버와의 실연은 아직 검증하지 않았습니다.
+
+```bash
+pathlens import-taxii --url https://YOUR-AUTHORIZED-SERVER/api/collections/ID/objects/ \
+  --source-name 'Authorized collection' --output /tmp/pathlens-taxii.json
+```
+
+### 피드의 주기적 갱신
+
+다음 명령은 실행 중인 **포그라운드 프로세스**에서만 Feodo 피드를 갱신합니다. 지정한 폴더가 미리 있어야 하며 각 결과는 새 파일로 저장됩니다. 종료하려면 Ctrl+C를 누르세요. 백그라운드 서비스나 운영체제 스케줄은 설치하지 않습니다. 기본 간격은 1시간이며 최소 5분입니다.
+
+```bash
+pathlens watch-feodo --directory /tmp --interval 3600
+```
+
+### CVE와 CISA KEV 연결
+
+사용자가 자산과 CVE 사이의 단서를 입력하고 CISA KEV 목록을 별도로 제공하면, 정확한 CVE 번호를 대조합니다. AWS 서비스 이름이나 IP만으로 CVE를 추측하지 않습니다. 입력한 자산·CVE 연결과 입력한 KEV 파일의 진위는 별도로 확인해야 하며, KEV에 있다는 사실은 해당 자산이 취약하거나 침해됐다는 뜻이 아닙니다.
+
+```bash
+pathlens update-kev --output /tmp/pathlens-kev.json
+pathlens scan example.com --snapshot examples/sample.json \
+  --cve-observations examples/cve-observations.json \
+  --kev-catalog examples/kev-sample.json --output pathlens-output/cve-example
+```
+
+위 예제의 CVE와 KEV 항목은 모두 가짜입니다. 실제 사용 시에는 `--kev-catalog`에 CISA에서 받은 파일과 허가된 자산에 대한 근거를 사용하세요. 두 파일은 함께 제공해야 합니다.
+
+### 유출 주장 입력
+
+`examples/exposure-observations.json`처럼 사용자가 적법하게 확보한 **주장의 최소 메타데이터**만 입력할 수 있습니다. 도메인, 분류, 출처, 시각만 받으며 비밀번호·토큰·이메일·유출 원문 필드는 허용하지 않습니다. 출처 이름이나 URL에도 민감정보를 넣지 마세요. PathLens는 다크웹에 접속하거나 내용을 검증하지 않으며, 결과는 사용자 제공의 미검증 주장입니다.
+
+```bash
+pathlens scan example.com --snapshot examples/sample.json \
+  --exposure-observations examples/exposure-observations.json \
+  --output pathlens-output/exposure-example
+```
+
+현재 자동 다크웹 수집, 인증이 필요한 TAXII 연결, 모든 STIX 패턴, 자산 소유권·실제 취약점·침해 확인은 지원하지 않습니다. 각 입력에 대한 제공처의 권한과 이용 조건을 사용자가 확인해야 합니다.
 
 보고서 JSON에 `threat_feed`, 자산별 `threat_context`, `indicator_matches`가 추가됐습니다. 기존 결과를 사용하는 연동 코드에서는 이 새 필드를 허용해야 합니다.
 
@@ -153,6 +200,8 @@ ruff check .
 - [Can I Take Over XYZ?](https://github.com/EdOverflow/can-i-take-over-xyz)
 - [AWS Elastic Beanstalk domain names](https://docs.aws.amazon.com/elasticbeanstalk/latest/dg/customdomains.html)
 - [Feodo Tracker blocklists](https://feodotracker.abuse.ch/blocklist/)
+- [OASIS TAXII 2.1](https://docs.oasis-open.org/cti/taxii/v2.1/os/taxii-v2.1-os.html)
+- [CISA KEV catalog](https://www.cisa.gov/known-exploited-vulnerabilities-catalog)
 - [MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk)
 
 ## 라이선스

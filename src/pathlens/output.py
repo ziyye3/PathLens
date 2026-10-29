@@ -24,6 +24,12 @@ def markdown(report: Report) -> str:
         f"- Threat feed: {_text(report.threat_feed.status)}; "
         f"{report.threat_feed.indicator_count} indicators; "
         f"{report.threat_feed.match_count} matches.",
+        f"- CVE correlation: {_text(report.cve_correlation.status)}; "
+        f"{report.cve_correlation.observation_count} supplied observations; "
+        f"{report.cve_correlation.match_count} KEV matches.",
+        f"- Exposure claims: {_text(report.exposure_correlation.status)}; "
+        f"{report.exposure_correlation.observation_count} supplied; "
+        f"{report.exposure_correlation.match_count} associated.",
         "",
         "## Assets",
     ]
@@ -96,6 +102,31 @@ def markdown(report: Report) -> str:
                 lines.append(
                     f"- Observation: {_text(evidence.source)}: {_text(evidence.description)}"
                 )
+        for match in asset.vulnerability_matches:
+            lines += [
+                "",
+                f"#### Supplied CVE / KEV match: {_text(match.cve_id)}",
+                "",
+                f"- Claimed asset evidence: {_text(match.claimed_evidence)} "
+                f"({_text(match.claimed_source)})",
+                f"- Supplied KEV catalog version: {_text(match.kev_catalog_version)}; "
+                f"date added: {_text(match.kev_date_added)}",
+                f"- Catalog description: {_text(match.kev_description)}",
+                f"- Catalog action: {_text(match.kev_action)}",
+                f"- Reference: {_text(match.kev_reference)}",
+                "- Association is supplied, not verified; a catalog match does not establish "
+                "that this asset is vulnerable or compromised.",
+            ]
+        for claim in asset.exposure_claims:
+            lines += [
+                "",
+                f"#### Unverified exposure claim: {_text(claim.category)}",
+                "",
+                f"- Source: {_text(claim.source_name)} ({_text(claim.source_url)})",
+                f"- Claimed observation time: {_text(claim.observed_at.isoformat())}",
+                "- The user supplied this claim; PathLens did not retrieve "
+                "or verify leaked content.",
+            ]
     if report.warnings:
         lines += ["", "## Collection warnings", ""]
         lines.extend(f"- {_text(warning)}" for warning in report.warnings)
