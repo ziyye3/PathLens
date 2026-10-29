@@ -29,6 +29,10 @@ def markdown(report: Report) -> str:
         f"{report.cve_correlation.match_count} KEV matches.",
         f"- Product/KEV correlation: {_text(report.product_correlation.status)}; "
         f"{report.product_correlation.candidate_count} candidates.",
+        f"- OSV correlation: {_text(report.osv_correlation.status)}; "
+        f"{report.osv_correlation.query_count} package queries; "
+        f"{report.osv_correlation.match_count} returned advisories.",
+        f"- OSV query time: {_text(report.osv_correlation.queried_at or 'not supplied')}",
         f"- Exposure claims: {_text(report.exposure_correlation.status)}; "
         f"{report.exposure_correlation.observation_count} supplied; "
         f"{report.exposure_correlation.match_count} associated.",
@@ -132,6 +136,20 @@ def markdown(report: Report) -> str:
                 f"- Catalog description: {_text(item.kev_description)}",
                 "- Exact vendor/product name match only; product, version, vulnerability "
                 "and compromise are not verified.",
+            ]
+        for item in asset.osv_matches:
+            lines += [
+                "",
+                f"#### OSV advisory: {_text(item.advisory_id)}",
+                "",
+                f"- Supplied package: {_text(item.ecosystem)} / {_text(item.package_name)} "
+                f"version {_text(item.version)}",
+                f"- Claimed source: {_text(item.claimed_source)}; {_text(item.claimed_evidence)}",
+                f"- Advisory summary: {_text(item.summary)}",
+                f"- Aliases: {_text(', '.join(item.aliases) or 'none')}",
+                f"- Withdrawn: {_text(item.withdrawn)}; reference: {_text(item.reference)}",
+                f"- Advisory data provenance: {_text(report.osv_correlation.status)}; "
+                "package deployment, version and exploitability are unverified.",
             ]
         for claim in asset.exposure_claims:
             lines += [

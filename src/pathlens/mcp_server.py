@@ -11,6 +11,7 @@ from .collectors import collect_live
 from .exposures import ExposureObservations, correlate_exposures
 from .kev import Catalog, Observations, ProductObservations, correlate, correlate_products
 from .models import Snapshot
+from .osv import OSVSnapshot, PackageObservations, correlate_osv
 from .threat_intel import ThreatFeed
 
 server = FastMCP("PathLens")
@@ -25,6 +26,8 @@ def analyze_snapshot(
     kev_catalog: dict[str, Any] | None = None,
     product_observations: dict[str, Any] | None = None,
     exposure_observations: dict[str, Any] | None = None,
+    osv_observations: dict[str, Any] | None = None,
+    osv_results: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Analyze an offline PathLens snapshot without making network requests."""
     feed = ThreatFeed.model_validate(threat_feed) if threat_feed is not None else None
@@ -44,6 +47,14 @@ def analyze_snapshot(
         if exposure_observations is not None
         else None
     )
+    if (osv_observations is None) != (osv_results is None):
+        raise ValueError("Provide both osv_observations and osv_results")
+    packages = (
+        PackageObservations.model_validate(osv_observations)
+        if osv_observations is not None
+        else None
+    )
+    osv_snapshot = OSVSnapshot.model_validate(osv_results) if osv_results is not None else None
     report = analyze(Snapshot.model_validate(snapshot), max_assets=max_assets, threat_feed=feed)
     if observations is not None and catalog is not None:
         correlate(report, observations, catalog)
@@ -51,6 +62,8 @@ def analyze_snapshot(
         correlate_products(report, products, catalog)
     if exposures is not None:
         correlate_exposures(report, exposures)
+    if packages is not None and osv_snapshot is not None:
+        correlate_osv(report, packages, osv_snapshot, provenance="supplied")
     return report.as_dict()
 
 
@@ -64,6 +77,8 @@ def scan_domain(
     kev_catalog: dict[str, Any] | None = None,
     product_observations: dict[str, Any] | None = None,
     exposure_observations: dict[str, Any] | None = None,
+    osv_observations: dict[str, Any] | None = None,
+    osv_results: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Query public sources for a domain only when the user explicitly confirms authorization."""
     feed = ThreatFeed.model_validate(threat_feed) if threat_feed is not None else None
@@ -83,6 +98,14 @@ def scan_domain(
         if exposure_observations is not None
         else None
     )
+    if (osv_observations is None) != (osv_results is None):
+        raise ValueError("Provide both osv_observations and osv_results")
+    packages = (
+        PackageObservations.model_validate(osv_observations)
+        if osv_observations is not None
+        else None
+    )
+    osv_snapshot = OSVSnapshot.model_validate(osv_results) if osv_results is not None else None
     snapshot = collect_live(domain, authorized=authorized, max_assets=max_assets)
     report = analyze(snapshot, max_assets=max_assets, collection_mode="live", threat_feed=feed)
     if observations is not None and catalog is not None:
@@ -91,6 +114,8 @@ def scan_domain(
         correlate_products(report, products, catalog)
     if exposures is not None:
         correlate_exposures(report, exposures)
+    if packages is not None and osv_snapshot is not None:
+        correlate_osv(report, packages, osv_snapshot, provenance="supplied")
     return report.as_dict()
 
 

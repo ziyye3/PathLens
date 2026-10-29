@@ -229,6 +229,26 @@ class ProductCorrelationSummary(StrictModel):
     candidate_count: int = 0
 
 
+class OSVMatch(StrictModel):
+    advisory_id: str
+    aliases: list[str]
+    ecosystem: str
+    package_name: str
+    version: str
+    claimed_source: str
+    claimed_evidence: str
+    summary: str
+    withdrawn: bool
+    reference: str
+
+
+class OSVSummary(StrictModel):
+    status: Literal["not_supplied", "supplied", "live"] = "not_supplied"
+    query_count: int = 0
+    match_count: int = 0
+    queried_at: datetime | None = None
+
+
 class ExposureClaim(StrictModel):
     category: Literal["credential_exposure", "data_leak_claim"]
     source_name: str
@@ -255,6 +275,7 @@ class Asset(StrictModel):
     indicator_matches: list[IndicatorMatch] = Field(default_factory=list)
     vulnerability_matches: list[VulnerabilityMatch] = Field(default_factory=list)
     product_kev_candidates: list[ProductKEVCandidate] = Field(default_factory=list)
+    osv_matches: list[OSVMatch] = Field(default_factory=list)
     exposure_claims: list[ExposureClaim] = Field(default_factory=list)
 
 
@@ -274,6 +295,7 @@ class Report(StrictModel):
     product_correlation: ProductCorrelationSummary = Field(
         default_factory=ProductCorrelationSummary
     )
+    osv_correlation: OSVSummary = Field(default_factory=OSVSummary)
     exposure_correlation: ExposureSummary = Field(default_factory=ExposureSummary)
 
     def as_dict(self) -> dict[str, Any]:

@@ -10,6 +10,8 @@ from typing import Any
 from .threat_intel import Indicator, Source, ThreatFeed
 
 _CLAUSE = re.compile(r"^(domain-name|ipv4-addr|ipv6-addr):value = '([^'\\]+)'$")
+_IN_CLAUSE = re.compile(r"^(domain-name|ipv4-addr|ipv6-addr):value IN \((.+)\)$")
+_IN_VALUE = re.compile(r"^'([^'\\]+)'$")
 _INDICATOR_ID = re.compile(
     r"^indicator--[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
 )
@@ -18,6 +20,15 @@ _INDICATOR_ID = re.compile(
 def _supported_clauses(pattern: Any) -> list[tuple[str, str]]:
     if not isinstance(pattern, str) or not pattern.startswith("[") or not pattern.endswith("]"):
         return []
+    in_clause = _IN_CLAUSE.fullmatch(pattern[1:-1])
+    if in_clause:
+        parts = [part.strip() for part in in_clause.group(2).split(",")]
+        if len(parts) > 100:
+            raise ValueError("STIX IN pattern exceeds the 100 alternative limit")
+        values = [_IN_VALUE.fullmatch(part) for part in parts]
+        if not all(values):
+            return []
+        return [(in_clause.group(1), value.group(1)) for value in values]
     parts = pattern[1:-1].split(" OR ")
     if len(parts) > 100:
         raise ValueError("STIX OR pattern exceeds the 100 alternative limit")

@@ -60,6 +60,18 @@ def test_real_mcp_stdio_handshake_and_offline_tool():
             )
             assert not product.isError
             assert product.structuredContent["product_correlation"]["candidate_count"] == 1
+            osv = await session.call_tool(
+                "analyze_snapshot",
+                {
+                    "snapshot": json.loads(SAMPLE.read_text()),
+                    "osv_observations": json.loads(
+                        (SAMPLE.parent / "osv-observations.json").read_text()
+                    ),
+                    "osv_results": json.loads((SAMPLE.parent / "osv-sample.json").read_text()),
+                },
+            )
+            assert not osv.isError
+            assert osv.structuredContent["osv_correlation"]["match_count"] == 1
             unauthorized = await session.call_tool("scan_domain", {"domain": "example.com"})
             assert unauthorized.isError
             assert "authorization" in unauthorized.content[0].text.lower()

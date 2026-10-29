@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0",
+  "queried_at": "2026-10-30T00:00:00Z",
+  "results": [
+    {
+      "query": {"ecosystem": "PyPI", "name": "synthetic-package", "version": "1.0.0"},
+      "advisories": [
+        {
+          "id": "SYNTHETIC-2099-0001",
+          "summary": "Synthetic advisory for offline demonstration only.",
+          "aliases": ["CVE-2099-20001"],
+          "withdrawn": false
+        }
+      ]
+    }
+  ]
+}

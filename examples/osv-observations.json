@@ -1,0 +1,13 @@
+{
+  "schema_version": "1.0",
+  "observations": [
+    {
+      "asset": "cdn.example.com",
+      "ecosystem": "PyPI",
+      "name": "synthetic-package",
+      "version": "1.0.0",
+      "source_url": "https://example.com/synthetic-package-evidence",
+      "evidence": "Synthetic package observation; no real deployment has been checked."
+    }
+  ]
+}

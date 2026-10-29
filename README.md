@@ -76,7 +76,7 @@ MCP 서버는 기본적으로 stdio를 사용합니다. 로그와 프로토콜 �
 - `analyze_snapshot`: JSON 스냅샷을 네트워크 없이 분석합니다.
 - `scan_domain`: 도메인과 `authorized: true`를 전달한 경우 공개 정보 조회를 수행합니다. MCP 호스트에서는 조회 전에 사용자가 도메인과 외부 전송을 확인해야 합니다.
 
-두 도구 모두 `threat_feed`, `cve_observations`, `product_observations`, `kev_catalog`, `exposure_observations` 인자에 아래 형식의 JSON 객체를 선택적으로 전달할 수 있습니다. CVE 또는 제품 관찰값은 KEV 목록과 함께 제공해야 합니다. 파일 경로를 전달하거나 피드를 자동으로 내려받지 않습니다. 반환값은 자산별 분석과 각 입력의 처리 상태를 포함합니다.
+두 도구 모두 `threat_feed`, `cve_observations`, `product_observations`, `kev_catalog`, `exposure_observations`, `osv_observations`, `osv_results` 인자에 아래 형식의 JSON 객체를 선택적으로 전달할 수 있습니다. CVE 또는 제품 관찰값은 KEV 목록과, OSV 관찰값은 OSV 결과와 함께 제공해야 합니다. 파일 경로를 전달하거나 OSV 피드를 자동으로 내려받지 않습니다. 반환값은 자산별 분석과 각 입력의 처리 상태를 포함합니다.
 
 ## 위협 인텔리전스
 
@@ -116,14 +116,14 @@ Feodo 변환의 유효 종료 시각은 **PathLens의 수집 후 24시간 보관
 
 ### STIX·TAXII 입력
 
-STIX 2.1 bundle에서 단일 도메인·IPv4·IPv6의 정확한 일치 패턴과 이런 조건의 단순 `OR` 결합을 변환합니다. `AND`, 시간 조건, 정규식 등 지원하지 않는 객체는 건너뛰고 개수를 표시합니다. `OR` 지표의 각 대안에는 원본 ID와 대안 번호를 함께 부여합니다. 폐기된 지표는 가져오지 않으며, 동일 ID의 여러 버전은 오류로 처리합니다. 공유 제한 표시가 있는 지표는 표시를 제거해 유출하지 않도록 전체 가져오기를 중단합니다. 유효 종료일이 없으면 시작일로부터 30일을 PathLens의 임시 기준으로 적용하고 설명에 표시합니다. 이것은 전체 STIX 표준 검증이나 전체 패턴 지원이 아닙니다.
+STIX 2.1 bundle에서 단일 도메인·IPv4·IPv6의 정확한 일치 패턴, 단순 `OR`, 한 필드에 대한 단순 `IN` 목록을 변환합니다. `AND`, 시간 조건, 정규식 등 지원하지 않는 객체는 건너뛰고 개수를 표시합니다. `OR`·`IN` 지표의 각 대안에는 원본 ID와 대안 번호를 함께 부여합니다. 폐기된 지표는 가져오지 않으며, 동일 ID의 여러 버전은 오류로 처리합니다. 공유 제한 표시가 있는 지표는 표시를 제거해 유출하지 않도록 전체 가져오기를 중단합니다. 유효 종료일이 없으면 시작일로부터 30일을 PathLens의 임시 기준으로 적용하고 설명에 표시합니다. 이것은 전체 STIX 표준 검증이나 전체 패턴 지원이 아닙니다.
 
 ```bash
 pathlens import-stix examples/sample-stix.json --output /tmp/pathlens-stix-demo.json \
   --source-name 'Synthetic example' --source-url https://example.com/stix
 ```
 
-명시적으로 접근 허가된 TAXII 2.1 collection의 `/objects/` HTTPS 주소도 입력할 수 있습니다. 인증 없음, HTTP Basic과 Bearer 방식을 지원합니다. 인증 정보는 명령행 인자가 아니라 실행 중 입력받으며 피드 파일에 기록하지 않습니다. 입력한 서버로 인증 정보가 전송되므로 주소와 권한을 먼저 확인하세요. URL에 인증 정보·쿼리 문자열을 넣을 수 없으며 리디렉션은 따라가지 않습니다. `next` 토큰 방식 페이지 이동을 지원하고, 페이지가 불완전하거나 제한을 넘으면 가져오기를 중단합니다. 실제 인증 서버와의 실연은 아직 검증하지 않았습니다.
+명시적으로 접근 허가된 TAXII 2.1 collection의 `/objects/` HTTPS 주소도 입력할 수 있습니다. 인증 없음, HTTP Basic과 Bearer 방식을 지원합니다. 인증 정보는 명령행 인자가 아니라 실행 중 입력받으며 피드 파일에 기록하지 않습니다. 입력한 서버로 인증 정보가 전송되므로 주소와 권한을 먼저 확인하세요. URL에 인증 정보·쿼리 문자열을 넣을 수 없으며 리디렉션은 따라가지 않습니다. `next` 토큰 방식 페이지 이동을 지원하고, 페이지가 불완전하거나 제한을 넘으면 가져오기를 중단합니다. 임시 로컬 TLS 서버의 Basic 인증은 테스트하지만, 실제 외부 인증 서버와의 실연은 아직 검증하지 않았습니다.
 
 ```bash
 pathlens import-taxii --url https://YOUR-AUTHORIZED-SERVER/api/collections/ID/objects/ \
@@ -156,7 +156,7 @@ launchctl print "gui/$(id -u)/org.pathlens.feodo-refresh"
 launchctl bootout "gui/$(id -u)/org.pathlens.feodo-refresh"
 ```
 
-다시 로그인한 뒤에도 사용하려면 macOS의 사용자 LaunchAgents 경로와 소유권·권한 요구사항을 별도로 확인해야 합니다. 절전 중 놓친 실행은 건너뛰어질 수 있습니다. 실제 launchd 등록·백그라운드 실행은 아직 테스트하지 않았습니다.
+다시 로그인한 뒤에도 사용하려면 macOS의 사용자 LaunchAgents 경로와 소유권·권한 요구사항을 별도로 확인해야 합니다. 절전 중 놓친 실행은 건너뛰어질 수 있습니다. 개발 환경에서 임시 등록 후 즉시 1회 실행해 스냅샷 생성을 확인하고 등록을 해제했습니다. 장시간 반복 실행이나 재로그인 후 동작은 확인하지 않았습니다.
 
 ### CVE와 CISA KEV 연결
 
@@ -180,6 +180,18 @@ pathlens scan example.com --snapshot examples/sample.json \
 ```
 
 실제 목록 사용 시 `--kev-catalog` 대신 `--fetch-kev`를 지정할 수 있습니다. 두 옵션을 동시에 사용할 수 없습니다.
+
+### OSV 패키지 버전별 권고 조회
+
+`examples/osv-observations.json`처럼 사용자가 제공한 패키지명·생태계·버전으로 OSV의 버전별 조회 결과를 연결할 수 있습니다. 현재 PyPI와 npm만 지원하며, 조회할 때 **패키지명·버전·생태계가 OSV로 전송**됩니다. 자산 도메인과 근거 URL은 전송하지 않습니다. 목록에 민감한 내부 패키지명이 포함되어 있다면 외부 조회를 하지 마세요.
+
+```bash
+pathlens scan example.com --snapshot examples/sample.json \
+  --osv-observations examples/osv-observations.json \
+  --osv-results examples/osv-sample.json --output pathlens-output/osv-example
+```
+
+위 예제의 패키지와 권고는 가짜이며 네트워크를 사용하지 않습니다. 실제 조회는 `--osv-results` 대신 `--fetch-osv`를 명시해야 합니다. OSV는 버전을 유사하게 매칭할 수 있고, PathLens는 실제 패키지 배포·버전·악용 가능성을 확인하지 않습니다. 빈 결과도 안전을 보장하지 않습니다. 입력 파일로 제공된 결과는 출처가 검증되지 않은 사용자 제공 데이터로 표시합니다. 조회가 실패하거나 페이지가 누락되면 분석을 중단합니다.
 
 ### 유출 주장 입력
 
@@ -232,6 +244,7 @@ ruff check .
 - [Feodo Tracker blocklists](https://feodotracker.abuse.ch/blocklist/)
 - [OASIS TAXII 2.1](https://docs.oasis-open.org/cti/taxii/v2.1/os/taxii-v2.1-os.html)
 - [CISA KEV catalog](https://www.cisa.gov/known-exploited-vulnerabilities-catalog)
+- [OSV version query API](https://google.github.io/osv.dev/post-v1-query/)
 - [MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk)
 
 ## 라이선스

@@ -20,7 +20,8 @@ from .kev import (
     fetch_catalog,
     load_json,
 )
-from .models import Snapshot, normalize_name
+from .models import Snapshot, in_scope, normalize_name
+from .osv import OSVSnapshot, PackageObservations, correlate_osv, fetch_observations
 from .output import write_report
 from .threat_intel import load_feed
 
@@ -51,6 +52,15 @@ def scan(
     exposure_observations: Annotated[
         Path | None, typer.Option(help="Minimal user-supplied exposure claims JSON.")
     ] = None,
+    osv_observations: Annotated[
+        Path | None, typer.Option(help="User-supplied asset/package/version observations JSON.")
+    ] = None,
+    osv_results: Annotated[
+        Path | None, typer.Option(help="Offline OSV query results JSON.")
+    ] = None,
+    fetch_osv: Annotated[
+        bool, typer.Option(help="Send package names and versions (not domains) to OSV.")
+    ] = False,
     max_assets: Annotated[
         int, typer.Option(min=1, max=200, help="Maximum number of in-scope names.")
     ] = 100,
@@ -84,6 +94,20 @@ def scan(
             if exposure_observations
             else None
         )
+        if fetch_osv and osv_results:
+            raise ValueError("Choose either --fetch-osv or --osv-results")
+        if bool(osv_observations) != bool(osv_results or fetch_osv):
+            raise ValueError("Provide OSV observations and either --fetch-osv or --osv-results")
+        packages = (
+            PackageObservations.model_validate(load_json(osv_observations))
+            if osv_observations
+            else None
+        )
+        if packages is not None and any(
+            not in_scope(item.asset, domain) for item in packages.observations
+        ):
+            raise ValueError("Package observation asset is outside the requested domain")
+        osv_snapshot = OSVSnapshot.model_validate(load_json(osv_results)) if osv_results else None
         if snapshot:
             if snapshot.stat().st_size > 25 * 1024 * 1024:
                 raise ValueError("Snapshot exceeds 25 MiB")
@@ -103,6 +127,13 @@ def scan(
             correlate_products(report, products, catalog)
         if exposures is not None:
             correlate_exposures(report, exposures)
+        if packages is not None:
+            if fetch_osv:
+                osv_snapshot = fetch_observations(packages)
+            if osv_snapshot is not None:
+                correlate_osv(
+                    report, packages, osv_snapshot, provenance="live" if fetch_osv else "supplied"
+                )
         paths = write_report(report, raw, output)
     except (CollectionError, ValueError, OSError, ValidationError) as exc:
         typer.echo(f"Error: {exc}", err=True)
@@ -135,6 +166,12 @@ def scan(
             typer.echo(f"  Product/KEV candidate: {candidate.cve_id}; version is not verified.")
         for claim in asset.exposure_claims:
             typer.echo(f"  Exposure claim: {claim.category} ({claim.source_name}); unverified.")
+        for match in asset.osv_matches:
+            status = "withdrawn" if match.withdrawn else "returned"
+            typer.echo(
+                f"  OSV [{status}/{report.osv_correlation.status}]: {match.advisory_id}; "
+                "deployment is unverified."
+            )
     for path in paths:
         typer.echo(str(path))
     for warning in report.warnings:
