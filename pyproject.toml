@@ -27,7 +27,7 @@ pathlens = "pathlens.cli:main"
 pathlens-mcp = "pathlens.mcp_server:main"
 
 [tool.setuptools.package-data]
-pathlens = ["data/*.yaml"]
+pathlens = ["data/*.yaml", "dashboard/*.html", "dashboard/*.css", "dashboard/*.js"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

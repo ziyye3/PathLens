@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src file:; style-src file:; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta name="referrer" content="no-referrer">
+  <title>PathLens · 분석 결과</title>
+  <link rel="stylesheet" href="styles.css">
+  <script defer src="demo.js"></script>
+  <script defer src="app.js"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <a class="brand" href="#overview" aria-label="PathLens 분석 결과로 이동">
+        <span class="brand-symbol" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+        <span>path<span class="brand-light">lens</span><small>OSINT WORKSPACE</small></span>
+      </a>
+      <p class="side-label">WORKSPACE / 01</p>
+      <a class="side-link" href="#overview"><span class="side-bullet"></span>분석 결과<span class="side-arrow">↗</span></a>
+      <div class="side-bottom">
+        <div class="side-note"><span class="status-dot"></span> LOCAL VIEWER</div>
+        <p>보고서 파일은 이 브라우저에서만 읽습니다. 별도의 업로드나 서버 연결은 없습니다.</p>
+        <span class="side-version">PATHLENS / OPEN SOURCE</span>
+      </div>
+    </aside>
+
+    <main id="overview" class="main">
+      <header class="topbar">
+        <div class="breadcrumb"><span>WORKSPACE</span><b>/</b> 분석 결과</div>
+        <div class="top-actions">
+          <button class="quiet-button" id="demo-button" type="button">데모 보기</button>
+          <label class="upload-button" for="file-input"><span aria-hidden="true">＋</span> 보고서 열기
+            <input id="file-input" type="file" accept=".json,application/json">
+          </label>
+        </div>
+      </header>
+
+      <div class="content">
+        <section class="intro" aria-labelledby="page-title">
+          <div>
+            <div class="eyebrow"><span class="tiny-square"></span> EXTERNAL VISIBILITY <span class="eyebrow-line"></span> REPORT 01</div>
+            <h1 id="page-title">바깥에서 보이는<br><em>연결을 살펴봅니다.</em></h1>
+            <p class="intro-copy">공개 정보에서 발견한 자산과 클라우드 연결, 확인이 필요한 단서를 모았습니다.</p>
+          </div>
+          <div class="report-identity">
+            <span class="identity-label">CURRENT REPORT</span>
+            <strong id="report-domain">—</strong>
+            <span id="report-meta">보고서를 불러오는 중</span>
+            <span class="dataset-pill" id="dataset-label">가상 데모 데이터</span>
+          </div>
+        </section>
+
+        <div class="notice" id="report-notice" role="status" aria-live="polite">
+          <span class="notice-mark">i</span>
+          <span id="notice-text">현재 화면은 가상 데이터입니다. 실제 자산이나 위협을 나타내지 않습니다.</span>
+        </div>
+        <details class="report-notes" id="report-notes">
+          <summary>수집 경고와 분석의 한계 <span id="notes-count"></span></summary>
+          <ul id="report-notes-list"></ul>
+        </details>
+
+        <section class="summary" aria-label="보고서 요약">
+          <div class="summary-cell"><span>분석한 자산</span><strong id="metric-assets">—</strong><small>도메인 기준</small></div>
+          <div class="summary-cell"><span>우선 확인</span><strong id="metric-high">—</strong><small>높은 우선순위 후보</small></div>
+          <div class="summary-cell"><span>규칙 일치</span><strong id="metric-findings">—</strong><small>중복 자산 포함</small></div>
+          <div class="summary-cell"><span>TI 단서</span><strong id="metric-ti">—</strong><small>지표·STIX 일치</small></div>
+        </section>
+
+        <div class="workspace-heading">
+          <div><p class="section-kicker">01 / INVESTIGATE</p><h2>발견한 자산</h2><p>자산을 선택해 연결 경로와 판단 근거를 확인하세요.</p></div>
+          <span class="heading-count" id="asset-count">0 ASSETS</span>
+        </div>
+
+        <section class="workspace" aria-label="자산 분석">
+          <div class="asset-column">
+            <div class="list-tools">
+              <label class="search-wrap" for="asset-search"><span aria-hidden="true">⌕</span><input id="asset-search" type="search" placeholder="도메인 검색" autocomplete="off"></label>
+              <label class="visually-hidden" for="priority-filter">우선순위 필터</label>
+              <select id="priority-filter"><option value="all">전체 우선순위</option><option value="high">높음</option><option value="medium">검토</option><option value="info">정보</option><option value="low">낮음</option><option value="unknown">미확인</option></select>
+            </div>
+            <div class="list-header"><span>ASSET / DOMAIN</span><span>PRIORITY</span></div>
+            <div id="asset-list" class="asset-list" aria-label="자산 목록"></div>
+            <p id="list-empty" class="empty-message" hidden>조건에 맞는 자산이 없습니다.</p>
+          </div>
+          <div class="detail-column" id="asset-detail" aria-live="polite"></div>
+        </section>
+
+        <section class="intelligence" aria-labelledby="intel-heading">
+          <div class="intel-copy"><p class="section-kicker">02 / CONTEXT</p><h2 id="intel-heading">위협 정보 연결</h2><p>제공된 지표와 관측값을 비교한 결과입니다. 일치만으로 침해 여부를 확정할 수 없습니다.</p></div>
+          <div class="intel-content" id="intel-content"></div>
+        </section>
+
+        <footer><span>PATHLENS / LOCAL REPORT VIEWER</span><p>공개 정보는 소유권이나 실제 취약점을 증명하지 않습니다. 결과는 사람이 확인해야 하는 후보입니다.</p><span>01 — END</span></footer>
+      </div>
+    </main>
+  </div>
+</body>
+</html>

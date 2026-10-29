@@ -7,6 +7,8 @@ import json
 import os
 import re
 import uuid
+import webbrowser
+from importlib.resources import files
 from pathlib import Path
 from typing import Annotated
 
@@ -223,6 +225,22 @@ def validate_feed(path: Annotated[Path, typer.Argument(help="Local indicator fee
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
     typer.echo(f"Valid feed: {feed.source.name}, {len(feed.indicators)} indicators.")
+
+
+@app.command("dashboard")
+def dashboard(
+    no_open: Annotated[bool, typer.Option(help="Print the local dashboard address only.")] = False,
+) -> None:
+    """Open the offline report viewer; no server or network access is required."""
+    index = Path(str(files("pathlens").joinpath("dashboard/index.html")))
+    if not index.is_file():
+        typer.echo("Error: dashboard files are missing from this installation.", err=True)
+        raise typer.Exit(code=1)
+    url = index.resolve().as_uri()
+    typer.echo(f"Local dashboard: {url}")
+    if not no_open and not webbrowser.open(url):
+        typer.echo("Browser did not open. Open the address above manually.", err=True)
+        raise typer.Exit(code=1)
 
 
 @app.command("update-feodo")
