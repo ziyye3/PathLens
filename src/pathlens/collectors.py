@@ -44,6 +44,7 @@ def _read_json(client: httpx.Client, url: str, params: dict[str, str] | None = N
 def _dns_query(resolver: dns.resolver.Resolver, name: str, record_type: str) -> DNSRecord:
     status: str
     values: list[str] = []
+    resolver_name = ", ".join(str(server) for server in resolver.nameservers) or "unknown"
     try:
         answer = resolver.resolve(name, record_type, raise_on_no_answer=True, search=False)
         values = [str(item).rstrip(".") for item in answer]
@@ -58,10 +59,10 @@ def _dns_query(resolver: dns.resolver.Resolver, name: str, record_type: str) -> 
         status = "error"
     try:
         return DNSRecord(
-            name=name, record_type=record_type, status=status, values=values, resolver=DNS_RESOLVER
+            name=name, record_type=record_type, status=status, values=values, resolver=resolver_name
         )
     except (ValidationError, ValueError):
-        return DNSRecord(name=name, record_type=record_type, status="error", resolver=DNS_RESOLVER)
+        return DNSRecord(name=name, record_type=record_type, status="error", resolver=resolver_name)
 
 
 def collect_dns(names: list[str], resolver: dns.resolver.Resolver | None = None) -> list[DNSRecord]:
