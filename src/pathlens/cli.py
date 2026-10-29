@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import importlib.util
+import json
+import os
+import uuid
 from pathlib import Path
 from typing import Annotated
 
@@ -26,6 +30,12 @@ from .output import write_report
 from .threat_intel import load_feed
 
 app = typer.Typer(no_args_is_help=True, help="Analyze public cloud asset clues with evidence.")
+
+
+def _write_private(path: Path, content: str) -> None:
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        handle.write(content)
 
 
 @app.command()
@@ -288,6 +298,78 @@ def import_stix_file(
     )
 
 
+@app.command("evaluate-stix")
+def evaluate_stix_command(
+    indicators: Annotated[Path, typer.Argument(help="STIX 2.1 indicator bundle JSON.")],
+    observations: Annotated[Path, typer.Argument(help="STIX 2.1 observed-data bundle JSON.")],
+    output: Annotated[Path | None, typer.Option(help="New JSON result file.")] = None,
+    snapshot: Annotated[
+        bool, typer.Option(help="Treat observations as an offline PathLens snapshot.")
+    ] = False,
+    indicator_id: Annotated[
+        list[str] | None, typer.Option(help="Select an indicator ID; repeat for multiple IDs.")
+    ] = None,
+) -> None:
+    """Evaluate complex STIX patterns against explicitly supplied observations."""
+    from .stix_patterns import evaluate_stix, snapshot_observations
+
+    try:
+        if any(importlib.util.find_spec(name) is None for name in ("stix2matcher", "psutil")):
+            raise ValueError(
+                "Install STIX support from the PathLens checkout: pip install -e '.[stix]'"
+            )
+        if output is not None and (output.exists() or output.is_symlink()):
+            raise FileExistsError(f"Refusing to overwrite existing output: {output}")
+        observed = load_json(observations)
+        source_indexes = None
+        if snapshot:
+            observed, source_indexes = snapshot_observations(Snapshot.model_validate(observed))
+        result = evaluate_stix(load_json(indicators), observed, indicator_ids=indicator_id)
+        if source_indexes is not None:
+            result["snapshot_dns_record_indexes"] = source_indexes
+        rendered = json.dumps(result, indent=2, ensure_ascii=False) + "\n"
+        if output is None:
+            typer.echo(rendered, nl=False)
+        else:
+            _write_private(output, rendered)
+    except (ValueError, OSError, ValidationError) as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+
+def _prompt_taxii_auth(auth_method: str) -> tuple[tuple[str, str] | None, str | None]:
+    if auth_method == "basic":
+        username = typer.prompt("TAXII username")
+        password = typer.prompt("TAXII password", hide_input=True)
+        return (username, password), None
+    if auth_method == "bearer":
+        return None, typer.prompt("TAXII bearer token", hide_input=True)
+    if auth_method != "none":
+        raise ValueError("Authentication must be none, basic, or bearer")
+    return None, None
+
+
+@app.command("check-taxii")
+def check_taxii(
+    url: Annotated[str, typer.Option(help="Authorized TAXII 2.1 collection objects URL.")],
+    auth_method: Annotated[
+        str, typer.Option(help="Authentication: none, basic, or bearer.")
+    ] = "none",
+) -> None:
+    """Check access to one page without saving or printing threat data."""
+    from .taxii import check_collection, validate_collection_url
+
+    try:
+        validate_collection_url(url)
+        basic, bearer = _prompt_taxii_auth(auth_method)
+        count, more = check_collection(url, basic_auth=basic, bearer_token=bearer)
+    except (CollectionError, ValueError) as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(f"Collection accessible; received {count} objects; more pages: {more}.")
+    typer.echo("Access success alone does not prove the server enforced authentication.")
+
+
 @app.command("import-taxii")
 def import_taxii(
     url: Annotated[str, typer.Option(help="Authorized TAXII 2.1 collection objects URL.")],
@@ -296,6 +378,9 @@ def import_taxii(
     auth_method: Annotated[
         str, typer.Option(help="Authentication: none, basic, or bearer.")
     ] = "none",
+    raw_stix: Annotated[
+        bool, typer.Option(help="Save the unmarked original STIX bundle for pattern evaluation.")
+    ] = False,
 ) -> None:
     """Fetch an explicitly selected TAXII collection; credentials are prompted privately."""
     from .stix_import import import_stix
@@ -307,27 +392,33 @@ def import_taxii(
             raise FileExistsError(f"Refusing to overwrite existing output: {output}")
         source = Source(name=source_name, url=url)
         validate_collection_url(url)
-        basic = None
-        bearer = None
-        if auth_method == "basic":
-            username = typer.prompt("TAXII username")
-            password = typer.prompt("TAXII password", hide_input=True)
-            basic = (username, password)
-        elif auth_method == "bearer":
-            bearer = typer.prompt("TAXII bearer token", hide_input=True)
-        elif auth_method != "none":
-            raise ValueError("Authentication must be none, basic, or bearer")
-        feed, skipped = import_stix(
-            fetch_collection(url, basic_auth=basic, bearer_token=bearer), source
-        )
-        with output.open("x", encoding="utf-8") as handle:
-            handle.write(feed.model_dump_json(indent=2) + "\n")
+        basic, bearer = _prompt_taxii_auth(auth_method)
+        document = fetch_collection(url, basic_auth=basic, bearer_token=bearer)
+        if raw_stix:
+            if any(
+                not isinstance(obj, dict)
+                or obj.get("object_marking_refs") or obj.get("granular_markings")
+                for obj in document["objects"]
+            ):
+                raise ValueError("Marked or invalid STIX content cannot be saved as raw output")
+            document["id"] = f"bundle--{uuid.uuid4()}"
+            serialized = json.dumps(document, indent=2, ensure_ascii=False) + "\n"
+            if len(serialized.encode("utf-8")) > 25 * 1024 * 1024:
+                raise ValueError("Raw STIX bundle exceeds 25 MiB")
+            _write_private(output, serialized)
+        else:
+            feed, skipped = import_stix(document, source)
+            with output.open("x", encoding="utf-8") as handle:
+                handle.write(feed.model_dump_json(indent=2) + "\n")
     except (CollectionError, ValueError, OSError, ValidationError) as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
-    typer.echo(
-        f"Imported {len(feed.indicators)} indicators; skipped {skipped} unsupported objects."
-    )
+    if raw_stix:
+        typer.echo(f"Saved {len(document['objects'])} original objects to a private local file.")
+    else:
+        typer.echo(
+            f"Imported {len(feed.indicators)} indicators; skipped {skipped} unsupported objects."
+        )
 
 
 @app.command("mcp")

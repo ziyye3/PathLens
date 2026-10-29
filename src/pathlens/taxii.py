@@ -53,18 +53,18 @@ def _read_envelope(
                     raise CollectionError("TAXII response exceeds the size limit")
                 chunks.append(chunk)
         return json.loads(b"".join(chunks))
+    except httpx.HTTPStatusError as exc:
+        raise CollectionError(f"TAXII server returned HTTP {exc.response.status_code}") from exc
+    except httpx.TimeoutException as exc:
+        raise CollectionError("TAXII connection timed out") from exc
     except (httpx.HTTPError, ValueError) as exc:
         raise CollectionError(f"TAXII source unavailable or invalid: {type(exc).__name__}") from exc
 
 
-def fetch_collection(
-    url: str,
-    *,
-    client: httpx.Client | None = None,
+def _authentication(
     basic_auth: tuple[str, str] | None = None,
     bearer_token: str | None = None,
-) -> dict:
-    validate_collection_url(url)
+) -> httpx.Auth | None:
     if basic_auth is not None and bearer_token is not None:
         raise ValueError("Choose one TAXII authentication method")
     if basic_auth is not None:
@@ -83,7 +83,44 @@ def fetch_collection(
         or any(ord(char) < 33 or ord(char) > 126 for char in bearer_token)
     ):
         raise ValueError("Invalid TAXII bearer token")
-    auth = httpx.BasicAuth(*basic_auth) if basic_auth is not None else None
+    return httpx.BasicAuth(*basic_auth) if basic_auth is not None else None
+
+
+def check_collection(
+    url: str,
+    *,
+    client: httpx.Client | None = None,
+    basic_auth: tuple[str, str] | None = None,
+    bearer_token: str | None = None,
+) -> tuple[int, bool]:
+    """Read one limited page without retaining or displaying its contents."""
+    validate_collection_url(url)
+    auth = _authentication(basic_auth, bearer_token)
+    owned = client is None
+    if client is None:
+        client = httpx.Client(timeout=15.0, follow_redirects=False, trust_env=False)
+    try:
+        envelope = _read_envelope(client, url, {"limit": 1}, auth, bearer_token)
+        if not isinstance(envelope, dict) or not isinstance(envelope.get("objects", []), list):
+            raise CollectionError("Invalid TAXII envelope")
+        more = envelope.get("more", False)
+        if not isinstance(more, bool):
+            raise CollectionError("Invalid TAXII pagination flag")
+        return len(envelope.get("objects", [])), more
+    finally:
+        if owned:
+            client.close()
+
+
+def fetch_collection(
+    url: str,
+    *,
+    client: httpx.Client | None = None,
+    basic_auth: tuple[str, str] | None = None,
+    bearer_token: str | None = None,
+) -> dict:
+    validate_collection_url(url)
+    auth = _authentication(basic_auth, bearer_token)
     owned = client is None
     if client is None:
         client = httpx.Client(

@@ -1,0 +1,40 @@
+{
+  "type": "bundle",
+  "id": "bundle--00000000-0000-4000-8000-000000000002",
+  "objects": [
+    {
+      "type": "observed-data",
+      "spec_version": "2.1",
+      "id": "observed-data--00000000-0000-4000-8000-000000000001",
+      "created": "2026-10-01T00:00:00.000Z",
+      "modified": "2026-10-01T00:00:00.000Z",
+      "first_observed": "2026-10-01T00:00:00Z",
+      "last_observed": "2026-10-01T00:00:00Z",
+      "number_observed": 1,
+      "object_refs": ["domain-name--00000000-0000-4000-8000-000000000001"]
+    },
+    {
+      "type": "observed-data",
+      "spec_version": "2.1",
+      "id": "observed-data--00000000-0000-4000-8000-000000000002",
+      "created": "2026-10-01T00:00:20.000Z",
+      "modified": "2026-10-01T00:00:20.000Z",
+      "first_observed": "2026-10-01T00:00:20Z",
+      "last_observed": "2026-10-01T00:00:20Z",
+      "number_observed": 1,
+      "object_refs": ["ipv4-addr--00000000-0000-4000-8000-000000000001"]
+    },
+    {
+      "type": "domain-name",
+      "spec_version": "2.1",
+      "id": "domain-name--00000000-0000-4000-8000-000000000001",
+      "value": "demo.example.com"
+    },
+    {
+      "type": "ipv4-addr",
+      "spec_version": "2.1",
+      "id": "ipv4-addr--00000000-0000-4000-8000-000000000001",
+      "value": "192.0.2.10"
+    }
+  ]
+}

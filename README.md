@@ -116,7 +116,7 @@ Feodo 변환의 유효 종료 시각은 **PathLens의 수집 후 24시간 보관
 
 ### STIX·TAXII 입력
 
-STIX 2.1 bundle에서 단일 도메인·IPv4·IPv6의 정확한 일치 패턴, 단순 `OR`, 한 필드에 대한 단순 `IN` 목록을 변환합니다. `AND`, 시간 조건, 정규식 등 지원하지 않는 객체는 건너뛰고 개수를 표시합니다. `OR`·`IN` 지표의 각 대안에는 원본 ID와 대안 번호를 함께 부여합니다. 폐기된 지표는 가져오지 않으며, 동일 ID의 여러 버전은 오류로 처리합니다. 공유 제한 표시가 있는 지표는 표시를 제거해 유출하지 않도록 전체 가져오기를 중단합니다. 유효 종료일이 없으면 시작일로부터 30일을 PathLens의 임시 기준으로 적용하고 설명에 표시합니다. 이것은 전체 STIX 표준 검증이나 전체 패턴 지원이 아닙니다.
+`import-stix`는 STIX 2.1 bundle에서 도메인·IPv4·IPv6의 정확한 일치, 단순 `OR`와 `IN`을 기존 피드로 변환합니다. 복합 패턴은 이 과정에서 분리하지 않고 건너뜁니다. `OR`·`IN` 지표의 각 대안에는 원본 ID와 대안 번호를 부여합니다. 폐기된 지표는 가져오지 않으며, 동일 ID의 여러 버전은 오류로 처리합니다. 공유 제한 표시가 있는 지표는 전체 가져오기를 중단합니다. 유효 종료일이 없으면 시작일로부터 30일을 PathLens의 임시 기준으로 적용하고 설명에 표시합니다.
 
 ```bash
 pathlens import-stix examples/sample-stix.json --output /tmp/pathlens-stix-demo.json \
@@ -131,6 +131,31 @@ pathlens import-taxii --url https://YOUR-AUTHORIZED-SERVER/api/collections/ID/ob
 ```
 
 Basic 또는 Bearer 인증이 필요한 경우 `--auth-method basic` 또는 `--auth-method bearer`를 추가하세요. 비밀번호와 토큰은 보이지 않게 입력받습니다. 인증 정보와 제한된 피드는 공개 저장소에 올리지 마세요.
+
+`check-taxii`는 collection에 한 페이지를 요청하고 접근 여부만 표시합니다. 원본 객체는 저장하거나 출력하지 않습니다. HTTP 401과 403 등은 오류 코드로 구분합니다. 서버가 요청의 `limit`을 무시할 수도 있으므로 응답 크기 제한도 적용합니다. 접속 성공은 서버가 인증을 실제로 요구했는지까지 증명하지 않습니다.
+
+```bash
+pathlens check-taxii --url https://YOUR-AUTHORIZED-SERVER/api/collections/ID/objects/ \
+  --auth-method basic
+```
+
+공개 TAXII 2.1 피드인 [dPhish](https://dphish.com/feeds/)에서 인증 없이 한 페이지를 읽는 연결을 확인했습니다. Basic·Bearer는 로컬 TLS 테스트에서 검증했지만, **실제 외부 인증 서버에 대한 검증은 아직 하지 못했습니다**.
+
+### 복합 STIX 패턴 평가 (실험 기능)
+
+`evaluate-stix`는 원본 indicator bundle과 관측 데이터를 별도로 받아 패턴을 평가합니다. `AND`, `MATCHES`, `START/STOP`, `WITHIN`, `FOLLOWEDBY`, `REPEATS`를 포함한 예제를 테스트했습니다. `import-stix`로 만든 피드가 아니라 **변환 전의 indicator bundle**을 사용합니다. 결과는 기존 `scan` 보고서에 자동 병합되지 않습니다.
+
+```bash
+python -m pip install -e '.[stix]'
+pathlens evaluate-stix examples/stix-pattern-indicators.json examples/stix-observations.json
+pathlens evaluate-stix examples/stix-pattern-indicators.json examples/sample.json --snapshot
+```
+
+허가된 TAXII collection의 원본 패턴을 보존하려면 `import-taxii`에 `--raw-stix`를 추가합니다. 공유 제한 표시가 있는 객체는 저장을 거부하고, 파일은 로컬에서 소유자만 읽고 쓸 수 있게 생성합니다. 원본은 기존 `--threat-feed` 형식이 아니며, 제공자의 이용·보관 조건을 직접 확인해야 합니다. 원본이 20개 지표를 넘으면 `evaluate-stix`에서 `--indicator-id`를 반복해 평가할 ID를 최대 20개까지 선택합니다. 데이터를 임의로 잘라내지 않습니다.
+
+관측 입력은 도메인·IPv4·IPv6 값과 각각의 정확한 관측 시각만 지원합니다. `--snapshot`은 PathLens 스냅샷의 범위 내 DNS 응답을 관측 자료로 변환하며, 결과의 `snapshot_dns_record_indexes`는 원본 `dns_records`의 0부터 시작하는 위치입니다. DNS 응답에 함께 나온 값은 한 관측으로 취급합니다. 다른 관측 간 `AND`가 일치해도 두 대상이 서로 연결됐거나 악성이라는 뜻은 아닙니다. 인증서와 범위 밖 DNS 레코드는 이 변환에서 제외합니다.
+
+패턴 및 관측 수를 제한하고 별도 프로세스에서 평가하며 CPU·시간과 메모리 사용을 제한하거나 감시합니다. macOS의 메모리 감시는 최선의 보호이며 격리된 보안 샌드박스가 아닙니다. 지원하지 않는 속성, 시간 초과, 근거 부족, 처리 오류는 `indeterminate`로 표시합니다. `not_matched`는 **제공된 관측 데이터에서 일치하지 않았다**는 의미이지 안전하다는 뜻이 아닙니다. 참조 매처의 `WITHIN` 경계 문제를 피하기 위해 경계가 모호한 결과는 검토 필요로 표시합니다. OASIS 매처 자체가 프로토타입이므로 모든 STIX 패턴의 정확성이나 전체 STIX 유효성 검증을 보장하지 않습니다. Linux·macOS에서만 실험적으로 사용하고, 실제 운영 판단에는 별도 검증이 필요합니다. 공유 제한 표시가 있는 입력은 평가를 거부합니다.
 
 ### 피드의 주기적 갱신
 
