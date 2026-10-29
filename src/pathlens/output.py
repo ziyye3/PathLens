@@ -4,14 +4,17 @@ from __future__ import annotations
 
 import html
 import json
+import os
+import re
 from pathlib import Path
 
 from .models import Report, Snapshot
 
 
 def _text(value: object) -> str:
-    # Prevent user-supplied DNS text from breaking Markdown or injecting HTML.
-    return html.escape(str(value), quote=True).replace("\n", " ").replace("\r", " ")
+    value = re.sub(r"[\x00-\x1f\x7f-\x9f]", " ", str(value))
+    value = re.sub(r"([\\`*_\[\]!#])", r"\\\1", value)
+    return html.escape(value, quote=True)
 
 
 def markdown(report: Report) -> str:
@@ -24,6 +27,9 @@ def markdown(report: Report) -> str:
         f"- Threat feed: {_text(report.threat_feed.status)}; "
         f"{report.threat_feed.indicator_count} indicators; "
         f"{report.threat_feed.match_count} matches.",
+        f"- STIX pattern evaluation: {_text(report.stix_correlation.status)}; "
+        f"{report.stix_correlation.match_count} matches; "
+        f"{report.stix_correlation.indeterminate_count} indeterminate.",
         f"- CVE correlation: {_text(report.cve_correlation.status)}; "
         f"{report.cve_correlation.observation_count} supplied observations; "
         f"{report.cve_correlation.match_count} KEV matches.",
@@ -161,6 +167,27 @@ def markdown(report: Report) -> str:
                 "- The user supplied this claim; PathLens did not retrieve "
                 "or verify leaked content.",
             ]
+    if report.stix_correlation.status == "loaded":
+        lines += [
+            "", "## STIX pattern evaluation", "",
+            "Results are based on user-supplied indicators and DNS observations. "
+            "A match does not establish an attack, compromise, or a relationship between assets.",
+        ]
+        for item in report.stix_correlation.results:
+            lines += [
+                "", f"### {_text(item.indicator_id)}", "",
+                f"- Result: {_text(item.status)}; indicator validity: "
+                f"{_text(item.indicator_status or 'unknown')}",
+            ]
+            if item.reason:
+                lines.append(f"- Reason: {_text(item.reason)}")
+            for evidence in item.evidence:
+                lines.append(
+                    f"- DNS observation #{evidence.dns_record_index}: {_text(evidence.name)} "
+                    f"{_text(evidence.record_type)} {_text(', '.join(evidence.values))}; "
+                    f"{_text(evidence.observed_at.isoformat())} "
+                    f"({_text(evidence.observation_id)})"
+                )
     if report.warnings:
         lines += ["", "## Collection warnings", ""]
         lines.extend(f"- {_text(warning)}" for warning in report.warnings)
@@ -182,6 +209,7 @@ def write_report(report: Report, snapshot: Snapshot, directory: Path) -> list[Pa
         snapshot.model_dump_json(indent=2) + "\n",
     ]
     for path, text in zip(targets, content, strict=True):
-        with path.open("x", encoding="utf-8") as handle:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
             handle.write(text)
     return targets

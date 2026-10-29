@@ -28,6 +28,8 @@ def analyze_snapshot(
     exposure_observations: dict[str, Any] | None = None,
     osv_observations: dict[str, Any] | None = None,
     osv_results: dict[str, Any] | None = None,
+    stix_bundle: dict[str, Any] | None = None,
+    stix_indicator_ids: list[str] | None = None,
 ) -> dict[str, Any]:
     """Analyze an offline PathLens snapshot without making network requests."""
     feed = ThreatFeed.model_validate(threat_feed) if threat_feed is not None else None
@@ -55,7 +57,14 @@ def analyze_snapshot(
         else None
     )
     osv_snapshot = OSVSnapshot.model_validate(osv_results) if osv_results is not None else None
-    report = analyze(Snapshot.model_validate(snapshot), max_assets=max_assets, threat_feed=feed)
+    if stix_indicator_ids and stix_bundle is None:
+        raise ValueError("stix_indicator_ids requires stix_bundle")
+    parsed_snapshot = Snapshot.model_validate(snapshot)
+    report = analyze(parsed_snapshot, max_assets=max_assets, threat_feed=feed)
+    if stix_bundle is not None:
+        from .stix_patterns import correlate_stix
+
+        correlate_stix(report, parsed_snapshot, stix_bundle, indicator_ids=stix_indicator_ids)
     if observations is not None and catalog is not None:
         correlate(report, observations, catalog)
     if products is not None and catalog is not None:
@@ -79,6 +88,8 @@ def scan_domain(
     exposure_observations: dict[str, Any] | None = None,
     osv_observations: dict[str, Any] | None = None,
     osv_results: dict[str, Any] | None = None,
+    stix_bundle: dict[str, Any] | None = None,
+    stix_indicator_ids: list[str] | None = None,
 ) -> dict[str, Any]:
     """Query public sources for a domain only when the user explicitly confirms authorization."""
     feed = ThreatFeed.model_validate(threat_feed) if threat_feed is not None else None
@@ -106,8 +117,14 @@ def scan_domain(
         else None
     )
     osv_snapshot = OSVSnapshot.model_validate(osv_results) if osv_results is not None else None
+    if stix_indicator_ids and stix_bundle is None:
+        raise ValueError("stix_indicator_ids requires stix_bundle")
     snapshot = collect_live(domain, authorized=authorized, max_assets=max_assets)
     report = analyze(snapshot, max_assets=max_assets, collection_mode="live", threat_feed=feed)
+    if stix_bundle is not None:
+        from .stix_patterns import correlate_stix
+
+        correlate_stix(report, snapshot, stix_bundle, indicator_ids=stix_indicator_ids)
     if observations is not None and catalog is not None:
         correlate(report, observations, catalog)
     if products is not None and catalog is not None:

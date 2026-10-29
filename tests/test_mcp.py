@@ -32,6 +32,16 @@ def test_real_mcp_stdio_handshake_and_offline_tool():
             )
             assert not with_feed.isError
             assert with_feed.structuredContent["threat_feed"]["match_count"] == 2
+            stix = json.loads((SAMPLE.parent / "stix-pattern-indicators.json").read_text())
+            stix["objects"][0]["pattern"] = "[domain-name:value = 'cdn.example.com']"
+            correlated = await session.call_tool(
+                "analyze_snapshot",
+                {"snapshot": json.loads(SAMPLE.read_text()), "stix_bundle": stix},
+            )
+            assert not correlated.isError
+            assert correlated.structuredContent["stix_correlation"]["match_count"] == 1
+            evidence = correlated.structuredContent["stix_correlation"]["results"][0]["evidence"]
+            assert evidence[0]["dns_record_index"] == 2
             combined = await session.call_tool(
                 "analyze_snapshot",
                 {

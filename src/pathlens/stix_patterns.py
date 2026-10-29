@@ -5,6 +5,7 @@ This is separate from the exact-IOC feed: complex patterns must not be flattened
 
 from __future__ import annotations
 
+import importlib.util
 import ipaddress
 import json
 import re
@@ -15,23 +16,38 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from .models import Snapshot, in_scope, normalize_name
+from .models import (
+    Report,
+    Snapshot,
+    STIXCorrelation,
+    STIXObservationEvidence,
+    STIXPatternResult,
+    in_scope,
+    normalize_name,
+)
 
 _ID = re.compile(r"^[a-z0-9-]+--[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 _SCO_TYPES = {"domain-name", "ipv4-addr", "ipv6-addr"}
 _MAX_INDICATORS = 20
 _MAX_OBJECTS = 125
 _MAX_WORKER_RSS = 256 * 1024 * 1024
+_MAX_INDICATOR_BYTES = 25 * 1024 * 1024
 _SNAPSHOT_NAMESPACE = uuid.UUID("cb6bf8b0-6188-4386-95c2-2c20f37c8084")
 
 
-def snapshot_observations(snapshot: Snapshot) -> tuple[dict, dict[str, int]]:
+def snapshot_observations(
+    snapshot: Snapshot, *, allowed_names: set[str] | None = None
+) -> tuple[dict, dict[str, int]]:
     """Represent each in-scope DNS answer as one observation, not an attack event."""
     objects: list[dict] = []
     scos: dict[str, dict] = {}
     source_indexes: dict[str, int] = {}
     for index, record in enumerate(snapshot.dns_records):
-        if record.status != "answer" or not in_scope(record.name, snapshot.domain):
+        if (
+            record.status != "answer"
+            or not in_scope(record.name, snapshot.domain)
+            or (allowed_names is not None and record.name not in allowed_names)
+        ):
             continue
         if len(source_indexes) >= 25:
             raise ValueError("STIX observation limit exceeded; provide at most 25 DNS answers")
@@ -58,6 +74,53 @@ def snapshot_observations(snapshot: Snapshot) -> tuple[dict, dict[str, int]]:
             "last_observed": timestamp, "number_observed": 1, "object_refs": refs,
         })
     return {"type": "bundle", "objects": [*objects, *scos.values()]}, source_indexes
+
+
+def correlate_stix(
+    report: Report, snapshot: Snapshot, indicators: Any, *, indicator_ids: list[str] | None = None
+) -> None:
+    """Attach pattern results to the report, never to an inferred individual asset."""
+    if any(importlib.util.find_spec(name) is None for name in ("stix2matcher", "psutil")):
+        raise ValueError(
+            "Install STIX support from the PathLens checkout: pip install -e '.[stix]'"
+        )
+    try:
+        size = len(json.dumps(indicators, ensure_ascii=False).encode("utf-8"))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("STIX indicator bundle must be valid JSON") from exc
+    if size > _MAX_INDICATOR_BYTES:
+        raise ValueError("STIX indicator bundle exceeds 25 MiB")
+    bundle, indexes = snapshot_observations(
+        snapshot, allowed_names={asset.name for asset in report.assets}
+    )
+    assessed = evaluate_stix(indicators, bundle, indicator_ids=indicator_ids)
+    results = []
+    for result in assessed["results"]:
+        evidence = []
+        for obs_id in result.get("observation_ids", []):
+            index = indexes[obs_id]
+            record = snapshot.dns_records[index]
+            evidence.append(STIXObservationEvidence(
+                observation_id=obs_id, dns_record_index=index, name=record.name,
+                record_type=record.record_type, values=record.values,
+                observed_at=record.observed_at,
+            ))
+        results.append(STIXPatternResult(
+            indicator_id=result["indicator_id"], status=result["status"],
+            indicator_status=result.get("indicator_status"), reason=result.get("reason"),
+            evidence=evidence,
+        ))
+    report.stix_correlation = STIXCorrelation(
+        status="loaded", provenance="user_supplied", observation_count=len(indexes),
+        match_count=sum(result.status == "matched" for result in results),
+        indeterminate_count=sum(result.status == "indeterminate" for result in results),
+        results=results,
+    )
+    report.limitations.append(
+        "Complex STIX results use supplied indicators and DNS observations only. "
+        "A match across observations does not establish a relationship or compromise; "
+        "missing or unsupported data and matcher limitations require review."
+    )
 
 
 def _run_worker(payload: dict, timeout: float) -> tuple[str, str | None]:

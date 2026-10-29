@@ -76,7 +76,7 @@ MCP 서버는 기본적으로 stdio를 사용합니다. 로그와 프로토콜 �
 - `analyze_snapshot`: JSON 스냅샷을 네트워크 없이 분석합니다.
 - `scan_domain`: 도메인과 `authorized: true`를 전달한 경우 공개 정보 조회를 수행합니다. MCP 호스트에서는 조회 전에 사용자가 도메인과 외부 전송을 확인해야 합니다.
 
-두 도구 모두 `threat_feed`, `cve_observations`, `product_observations`, `kev_catalog`, `exposure_observations`, `osv_observations`, `osv_results` 인자에 아래 형식의 JSON 객체를 선택적으로 전달할 수 있습니다. CVE 또는 제품 관찰값은 KEV 목록과, OSV 관찰값은 OSV 결과와 함께 제공해야 합니다. 파일 경로를 전달하거나 OSV 피드를 자동으로 내려받지 않습니다. 반환값은 자산별 분석과 각 입력의 처리 상태를 포함합니다.
+두 도구 모두 `threat_feed`, `cve_observations`, `product_observations`, `kev_catalog`, `exposure_observations`, `osv_observations`, `osv_results` 및 `stix_bundle` 인자에 아래 형식의 JSON 객체를 선택적으로 전달할 수 있습니다. `stix_indicator_ids`로 평가할 원본 지표를 선택할 수 있습니다. CVE 또는 제품 관찰값은 KEV 목록과, OSV 관찰값은 OSV 결과와 함께 제공해야 합니다. 파일 경로를 전달하거나 OSV 피드를 자동으로 내려받지 않습니다. 반환값은 자산별 분석과 각 입력의 처리 상태를 포함합니다.
 
 ## 위협 인텔리전스
 
@@ -99,7 +99,7 @@ pathlens scan example.com --snapshot examples/sample.json \
 
 ### 실제 공개 TI 피드 받아오기
 
-사용자가 명령할 때만 Feodo Tracker의 추천 IP 목록을 받아 PathLens 형식으로 변환합니다. 대상 도메인은 Feodo에 전송하지 않습니다. 기존 파일은 덮어쓰지 않으므로 갱신할 때 새 파일명을 지정하세요. 자동 갱신은 구현되어 있지 않습니다.
+사용자가 명령할 때만 Feodo Tracker의 추천 IP 목록을 받아 PathLens 형식으로 변환합니다. 대상 도메인은 Feodo에 전송하지 않습니다. 기존 파일은 덮어쓰지 않으므로 갱신할 때 새 파일명을 지정하세요. 기본적으로 백그라운드에서 갱신하지 않으며, 선택적인 주기 갱신은 아래에서 설명합니다.
 
 ```bash
 pathlens update-feodo --output /tmp/pathlens-feodo-1.json
@@ -143,7 +143,7 @@ pathlens check-taxii --url https://YOUR-AUTHORIZED-SERVER/api/collections/ID/obj
 
 ### 복합 STIX 패턴 평가 (실험 기능)
 
-`evaluate-stix`는 원본 indicator bundle과 관측 데이터를 별도로 받아 패턴을 평가합니다. `AND`, `MATCHES`, `START/STOP`, `WITHIN`, `FOLLOWEDBY`, `REPEATS`를 포함한 예제를 테스트했습니다. `import-stix`로 만든 피드가 아니라 **변환 전의 indicator bundle**을 사용합니다. 결과는 기존 `scan` 보고서에 자동 병합되지 않습니다.
+`evaluate-stix`는 원본 indicator bundle과 관측 데이터를 별도로 받아 패턴을 평가합니다. `AND`, `MATCHES`, `START/STOP`, `WITHIN`, `FOLLOWEDBY`, `REPEATS`를 포함한 예제를 테스트했습니다. `import-stix`로 만든 피드가 아니라 **변환 전의 indicator bundle**을 사용합니다.
 
 ```bash
 python -m pip install -e '.[stix]'
@@ -151,9 +151,16 @@ pathlens evaluate-stix examples/stix-pattern-indicators.json examples/stix-obser
 pathlens evaluate-stix examples/stix-pattern-indicators.json examples/sample.json --snapshot
 ```
 
+같은 평가를 `scan`에 선택적으로 포함하려면 아래처럼 `--stix-bundle`을 지정합니다. 결과는 `report.json`의 `stix_correlation`과 `report.md`의 별도 섹션에 들어가며 각 일치에 DNS 근거가 표시됩니다. MCP의 `analyze_snapshot`과 `scan_domain`에도 `stix_bundle` JSON 객체를 전달할 수 있습니다. 결과는 개별 자산의 침해로 자동 귀속하지 않으며 기존 우선순위를 변경하지 않습니다.
+
+```bash
+pathlens scan example.com --snapshot examples/sample.json \
+  --stix-bundle examples/stix-snapshot-indicators.json --output pathlens-output/stix-example
+```
+
 허가된 TAXII collection의 원본 패턴을 보존하려면 `import-taxii`에 `--raw-stix`를 추가합니다. 공유 제한 표시가 있는 객체는 저장을 거부하고, 파일은 로컬에서 소유자만 읽고 쓸 수 있게 생성합니다. 원본은 기존 `--threat-feed` 형식이 아니며, 제공자의 이용·보관 조건을 직접 확인해야 합니다. 원본이 20개 지표를 넘으면 `evaluate-stix`에서 `--indicator-id`를 반복해 평가할 ID를 최대 20개까지 선택합니다. 데이터를 임의로 잘라내지 않습니다.
 
-관측 입력은 도메인·IPv4·IPv6 값과 각각의 정확한 관측 시각만 지원합니다. `--snapshot`은 PathLens 스냅샷의 범위 내 DNS 응답을 관측 자료로 변환하며, 결과의 `snapshot_dns_record_indexes`는 원본 `dns_records`의 0부터 시작하는 위치입니다. DNS 응답에 함께 나온 값은 한 관측으로 취급합니다. 다른 관측 간 `AND`가 일치해도 두 대상이 서로 연결됐거나 악성이라는 뜻은 아닙니다. 인증서와 범위 밖 DNS 레코드는 이 변환에서 제외합니다.
+관측 입력은 도메인·IPv4·IPv6 값과 각각의 정확한 관측 시각만 지원합니다. `--snapshot`은 PathLens 스냅샷의 범위 내 DNS 응답을 관측 자료로 변환하며, 결과의 `snapshot_dns_record_indexes`는 원본 `dns_records`의 0부터 시작하는 위치입니다. `scan`에서는 분석 대상 자산에 속하는 범위 내 DNS 응답만 사용합니다. 분석 가능한 DNS 응답은 최대 25개이며 제한을 넘으면 오류를 반환하고 임의로 잘라내지 않습니다. DNS 응답에 함께 나온 값은 한 관측으로 취급합니다. 다른 관측 간 `AND`가 일치해도 두 대상이 서로 연결됐거나 악성이라는 뜻은 아닙니다. 인증서와 범위 밖 DNS 레코드는 이 변환에서 제외합니다.
 
 패턴 및 관측 수를 제한하고 별도 프로세스에서 평가하며 CPU·시간과 메모리 사용을 제한하거나 감시합니다. macOS의 메모리 감시는 최선의 보호이며 격리된 보안 샌드박스가 아닙니다. 지원하지 않는 속성, 시간 초과, 근거 부족, 처리 오류는 `indeterminate`로 표시합니다. `not_matched`는 **제공된 관측 데이터에서 일치하지 않았다**는 의미이지 안전하다는 뜻이 아닙니다. 참조 매처의 `WITHIN` 경계 문제를 피하기 위해 경계가 모호한 결과는 검토 필요로 표시합니다. OASIS 매처 자체가 프로토타입이므로 모든 STIX 패턴의 정확성이나 전체 STIX 유효성 검증을 보장하지 않습니다. Linux·macOS에서만 실험적으로 사용하고, 실제 운영 판단에는 별도 검증이 필요합니다. 공유 제한 표시가 있는 입력은 평가를 거부합니다.
 
@@ -230,7 +237,7 @@ pathlens scan example.com --snapshot examples/sample.json \
 
 현재 자동 다크웹 수집, 모든 STIX 패턴, 자산 소유권·실제 취약점·침해 확인은 지원하지 않습니다. 각 입력에 대한 제공처의 권한과 이용 조건을 사용자가 확인해야 합니다.
 
-보고서 JSON에 `threat_feed`, 자산별 `threat_context`, `indicator_matches`가 추가됐습니다. 기존 결과를 사용하는 연동 코드에서는 이 새 필드를 허용해야 합니다.
+보고서 JSON에 `threat_feed`, `stix_correlation`, 자산별 `threat_context`, `indicator_matches`가 포함됩니다. 기존 결과를 사용하는 연동 코드에서는 이 필드를 허용해야 합니다. 생성하는 보고서와 관측 파일은 소유자만 읽고 쓸 수 있는 권한으로 만듭니다.
 
 ## 규칙과 위험 목록
 

@@ -192,6 +192,32 @@ class ThreatFeedSummary(StrictModel):
     match_count: int = 0
 
 
+class STIXObservationEvidence(StrictModel):
+    observation_id: str
+    dns_record_index: int
+    name: str
+    record_type: Literal["CNAME", "A", "AAAA"]
+    values: list[str]
+    observed_at: datetime
+
+
+class STIXPatternResult(StrictModel):
+    indicator_id: str
+    status: Literal["matched", "not_matched", "indeterminate"]
+    indicator_status: Literal["active", "expired", "not_yet_valid"] | None = None
+    reason: str | None = None
+    evidence: list[STIXObservationEvidence] = Field(default_factory=list)
+
+
+class STIXCorrelation(StrictModel):
+    status: Literal["not_supplied", "loaded"] = "not_supplied"
+    provenance: Literal["user_supplied"] | None = None
+    observation_count: int = 0
+    match_count: int = 0
+    indeterminate_count: int = 0
+    results: list[STIXPatternResult] = Field(default_factory=list, max_length=20)
+
+
 class VulnerabilityMatch(StrictModel):
     cve_id: str
     claimed_source: str
@@ -291,6 +317,7 @@ class Report(StrictModel):
     threat_feed: ThreatFeedSummary = Field(
         default_factory=lambda: ThreatFeedSummary(status="not_supplied")
     )
+    stix_correlation: STIXCorrelation = Field(default_factory=STIXCorrelation)
     cve_correlation: CVECorrelationSummary = Field(default_factory=CVECorrelationSummary)
     product_correlation: ProductCorrelationSummary = Field(
         default_factory=ProductCorrelationSummary

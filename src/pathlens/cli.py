@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import re
 import uuid
 from pathlib import Path
 from typing import Annotated
@@ -32,6 +33,10 @@ from .threat_intel import load_feed
 app = typer.Typer(no_args_is_help=True, help="Analyze public cloud asset clues with evidence.")
 
 
+def _terminal_text(value: object) -> str:
+    return re.sub(r"[\x00-\x1f\x7f-\x9f]", " ", str(value))
+
+
 def _write_private(path: Path, content: str) -> None:
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(fd, "w", encoding="utf-8") as handle:
@@ -48,6 +53,12 @@ def scan(
     rules: Annotated[Path | None, typer.Option(help="Optional YAML rules file.")] = None,
     threat_feed: Annotated[
         Path | None, typer.Option(help="Optional local indicator feed JSON.")
+    ] = None,
+    stix_bundle: Annotated[
+        Path | None, typer.Option(help="Optional raw STIX 2.1 indicator bundle JSON.")
+    ] = None,
+    stix_indicator_id: Annotated[
+        list[str] | None, typer.Option(help="Select a STIX indicator ID; repeat as needed.")
     ] = None,
     cve_observations: Annotated[
         Path | None, typer.Option(help="Explicit, authorized asset-CVE observations JSON.")
@@ -82,6 +93,9 @@ def scan(
     try:
         domain = normalize_name(domain)
         feed = load_feed(threat_feed) if threat_feed else None
+        if stix_indicator_id and stix_bundle is None:
+            raise ValueError("--stix-indicator-id requires --stix-bundle")
+        stix_data = load_json(stix_bundle) if stix_bundle else None
         if fetch_kev and kev_catalog:
             raise ValueError("Choose either --fetch-kev or --kev-catalog")
         if bool(cve_observations or product_observations) != bool(kev_catalog or fetch_kev):
@@ -131,6 +145,10 @@ def scan(
         report = analyze(
             raw, max_assets=max_assets, rules_path=rules, collection_mode=mode, threat_feed=feed
         )
+        if stix_bundle is not None:
+            from .stix_patterns import correlate_stix
+
+            correlate_stix(report, raw, stix_data, indicator_ids=stix_indicator_id)
         if observations is not None and catalog is not None:
             correlate(report, observations, catalog)
         if products is not None and catalog is not None:
@@ -156,6 +174,12 @@ def scan(
         f"Threat feed: {report.threat_feed.status}, "
         f"{report.threat_feed.match_count} indicator matches."
     )
+    if report.stix_correlation.status == "loaded":
+        typer.echo(
+            f"STIX: {report.stix_correlation.match_count} matches, "
+            f"{report.stix_correlation.indeterminate_count} indeterminate; "
+            "matches require review."
+        )
     for asset in report.assets:
         path = " -> ".join(asset.cname_chain)
         typer.echo(f"[{asset.priority.upper()}] {path}")
@@ -163,7 +187,9 @@ def scan(
             top_finding = next(
                 finding for finding in asset.findings if finding.priority == asset.priority
             )
-            typer.echo(f"  {top_finding.title}: {top_finding.action}")
+            typer.echo(
+                f"  {_terminal_text(top_finding.title)}: {_terminal_text(top_finding.action)}"
+            )
         else:
             typer.echo("  No matching rule; status is unknown, not a safety determination.")
         for match in asset.indicator_matches:
@@ -183,9 +209,9 @@ def scan(
                 "deployment is unverified."
             )
     for path in paths:
-        typer.echo(str(path))
+        typer.echo(_terminal_text(path))
     for warning in report.warnings:
-        typer.echo(f"Warning: {warning}", err=True)
+        typer.echo(f"Warning: {_terminal_text(warning)}", err=True)
 
 
 @app.command("validate-feed")
