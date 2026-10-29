@@ -173,6 +173,20 @@ def analyze(
     records: dict[str, list[DNSRecord]] = defaultdict(list)
     for record in snapshot.dns_records:
         records[record.name].append(record)
+    certificate_ids: dict[str, set[int]] = defaultdict(set)
+    for certificate in snapshot.certificates:
+        if certificate.id is None:
+            continue
+        for raw_name in certificate.name_value.splitlines():
+            raw_name = raw_name.strip()
+            if not raw_name or raw_name.startswith("*."):
+                continue
+            try:
+                name = normalize_name(raw_name)
+            except ValueError:
+                continue
+            if name in names:
+                certificate_ids[name].add(certificate.id)
 
     networks = []
     if snapshot.aws_ip_ranges:
@@ -188,14 +202,20 @@ def analyze(
                 Evidence(source="user-input", description=f"Requested domain: {name}")
             )
         if "crt.sh" in sources:
-            discovery_evidence.append(
-                Evidence(
-                    source="crt.sh",
-                    description=f"Name observed in certificate records: {name}",
-                    observed_at=snapshot.observed_at,
-                    reference="https://crt.sh/",
+            ids = sorted(certificate_ids.get(name, set()))[:3]
+            for certificate_id in ids or [None]:
+                discovery_evidence.append(
+                    Evidence(
+                        source="crt.sh",
+                        description=f"Name observed in certificate records: {name}",
+                        observed_at=snapshot.observed_at,
+                        reference=(
+                            f"https://crt.sh/?id={certificate_id}"
+                            if certificate_id is not None
+                            else "https://crt.sh/"
+                        ),
+                    )
                 )
-            )
         if "dns" in sources:
             discovery_evidence.append(_dns_evidence(records[name][0]))
         if not records.get(name):
@@ -219,13 +239,14 @@ def analyze(
         ]
         review_matches = [(hop, service) for hop, service in matches if service.review]
         terminal_records = records.get(chain[-1], [])
-        has_answer = any(record.status == "answer" for record in terminal_records)
+        exists_evidence = any(record.status in ("answer", "nodata") for record in terminal_records)
         nx_records = [record for record in terminal_records if record.status == "nxdomain"]
-        if has_answer and nx_records:
+        if exists_evidence and nx_records:
             warnings.append(
-                "Contradictory DNS observations: NXDOMAIN and an answer; no dangling claim made."
+                "Contradictory DNS observations: NXDOMAIN and an existing name; "
+                "no dangling claim made."
             )
-        has_nxdomain = bool(nx_records) and not has_answer
+        has_nxdomain = bool(nx_records) and not exists_evidence
         if any(
             record.status in ("timeout", "error")
             for hop in chain

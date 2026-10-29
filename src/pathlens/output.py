@@ -34,7 +34,10 @@ def markdown(report: Report) -> str:
         lines.append(f"- CNAME path: {_text(' → '.join(asset.cname_chain))}")
         lines.append(f"- Addresses: {_text(', '.join(asset.addresses) or 'none observed')}")
         for evidence in asset.discovery_evidence:
-            lines.append(f"- Discovery: {_text(evidence.source)}: {_text(evidence.description)}")
+            reference = f" ({_text(evidence.reference)})" if evidence.reference else ""
+            lines.append(
+                f"- Discovery: {_text(evidence.source)}: {_text(evidence.description)}{reference}"
+            )
         for warning in asset.warnings:
             lines.append(f"- Warning: {_text(warning)}")
         if not asset.findings:

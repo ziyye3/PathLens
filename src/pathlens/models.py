@@ -44,9 +44,10 @@ class StrictModel(BaseModel):
 
 
 class CertificateRecord(BaseModel):
-    # crt.sh includes many fields; only name_value is consumed.
+    # Keep certificate IDs for verifiable references; ignore unrelated crt.sh fields.
     model_config = ConfigDict(extra="ignore")
     name_value: str = Field(max_length=100_000)
+    id: int | None = Field(default=None, ge=1)
 
 
 class DNSRecord(StrictModel):

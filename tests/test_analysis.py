@@ -91,6 +91,13 @@ def test_scope_and_wildcard_are_not_added(sample):
     assert "example.com" in names
 
 
+def test_certificate_id_is_preserved_as_source_reference(sample):
+    sample.certificates[0].id = 12345
+    asset = assets_by_name(analyze(sample))["cdn.example.com"]
+    cert_evidence = [item for item in asset.discovery_evidence if item.source == "crt.sh"]
+    assert cert_evidence[0].reference == "https://crt.sh/?id=12345"
+
+
 def test_max_assets_preserves_apex_and_reports_truncation(sample):
     names, warnings = discover_names(sample, 2)
     assert len(names) == 2
@@ -136,6 +143,19 @@ def test_nxdomain_with_conflicting_answer_does_not_flag_dangling(sample):
             record_type="A",
             status="answer",
             values=["192.0.2.5"],
+        )
+    )
+    asset = assets_by_name(analyze(sample))["missing.example.com"]
+    assert "dangling-known-service" not in rule_ids(asset)
+    assert any("Contradictory" in warning for warning in asset.warnings)
+
+
+def test_nxdomain_with_nodata_does_not_flag_dangling(sample):
+    sample.dns_records.append(
+        DNSRecord(
+            name="removed.us-east-1.elasticbeanstalk.com",
+            record_type="A",
+            status="nodata",
         )
     )
     asset = assets_by_name(analyze(sample))["missing.example.com"]

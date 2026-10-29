@@ -48,3 +48,23 @@ def test_cli_does_not_run_live_without_authorized(tmp_path):
     result = runner.invoke(app, ["scan", "example.com", "--output", str(tmp_path)])
     assert result.exit_code == 1
     assert "authorization" in result.output
+
+
+def test_invalid_rules_have_a_clear_error(tmp_path):
+    bad_rules = tmp_path / "bad.yaml"
+    bad_rules.write_text("rules: [", encoding="utf-8")
+    result = runner.invoke(
+        app,
+        [
+            "scan",
+            "example.com",
+            "--snapshot",
+            str(SAMPLE),
+            "--rules",
+            str(bad_rules),
+            "--output",
+            str(tmp_path / "out"),
+        ],
+    )
+    assert result.exit_code == 1
+    assert "Invalid YAML rules" in result.output

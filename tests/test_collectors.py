@@ -66,3 +66,9 @@ def test_invalid_target_is_rejected_before_network(monkeypatch):
     monkeypatch.setattr(socket.socket, "connect", lambda *args: pytest.fail("unexpected network"))
     with pytest.raises(ValueError):
         collect_live("https://example.com", authorized=True)
+
+
+def test_invalid_asset_limit_is_rejected_before_network(monkeypatch):
+    monkeypatch.setattr(socket.socket, "connect", lambda *args: pytest.fail("unexpected network"))
+    with pytest.raises(ValueError, match="max_assets"):
+        collect_live("example.com", authorized=True, max_assets=201)

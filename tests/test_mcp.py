@@ -22,5 +22,8 @@ def test_real_mcp_stdio_handshake_and_offline_tool():
             assert not result.isError
             assert result.structuredContent["domain"] == "example.com"
             assert result.structuredContent["collection_mode"] == "snapshot"
+            unauthorized = await session.call_tool("scan_domain", {"domain": "example.com"})
+            assert unauthorized.isError
+            assert "authorization" in unauthorized.content[0].text.lower()
 
     asyncio.run(check())
