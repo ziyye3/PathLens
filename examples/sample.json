@@ -1,0 +1,28 @@
+{
+  "schema_version": "1.0",
+  "domain": "example.com",
+  "observed_at": "2026-10-14T00:00:00Z",
+  "certificates": [
+    {"name_value": "example.com\nmissing.example.com\ncdn.example.com\ns3.example.com\nip.example.com\ntimeout.example.com\n*.example.com\nnot-example.com"}
+  ],
+  "dns_records": [
+    {"name": "missing.example.com", "record_type": "CNAME", "status": "answer", "values": ["removed.us-east-1.elasticbeanstalk.com"], "observed_at": "2026-10-14T00:00:00Z"},
+    {"name": "removed.us-east-1.elasticbeanstalk.com", "record_type": "CNAME", "status": "nxdomain", "values": [], "observed_at": "2026-10-14T00:00:00Z"},
+    {"name": "cdn.example.com", "record_type": "CNAME", "status": "answer", "values": ["demo.cloudfront.net"], "observed_at": "2026-10-14T00:00:00Z"},
+    {"name": "demo.cloudfront.net", "record_type": "CNAME", "status": "nodata", "values": [], "observed_at": "2026-10-14T00:00:00Z"},
+    {"name": "demo.cloudfront.net", "record_type": "A", "status": "answer", "values": ["203.0.113.10"], "observed_at": "2026-10-14T00:00:00Z"},
+    {"name": "s3.example.com", "record_type": "CNAME", "status": "answer", "values": ["s3.example.com.s3.us-east-1.amazonaws.com"], "observed_at": "2026-10-14T00:00:00Z"},
+    {"name": "s3.example.com.s3.us-east-1.amazonaws.com", "record_type": "CNAME", "status": "nodata", "values": [], "observed_at": "2026-10-14T00:00:00Z"},
+    {"name": "ip.example.com", "record_type": "A", "status": "answer", "values": ["203.0.113.20"], "observed_at": "2026-10-14T00:00:00Z"},
+    {"name": "timeout.example.com", "record_type": "CNAME", "status": "answer", "values": ["unverified.elasticbeanstalk.com"], "observed_at": "2026-10-14T00:00:00Z"},
+    {"name": "unverified.elasticbeanstalk.com", "record_type": "CNAME", "status": "timeout", "values": [], "observed_at": "2026-10-14T00:00:00Z"}
+  ],
+  "aws_ip_ranges": {
+    "syncToken": "synthetic-example",
+    "createDate": "2026-10-14-00-00-00",
+    "prefixes": [{"ip_prefix": "203.0.113.0/24", "region": "TEST", "service": "EXAMPLE"}],
+    "ipv6_prefixes": []
+  },
+  "warnings": ["Synthetic sample only: the reserved example address range is not an actual AWS range."]
+}
+

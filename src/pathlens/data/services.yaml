@@ -1,0 +1,34 @@
+version: 1
+services:
+  - name: AWS S3
+    suffixes:
+      - s3.amazonaws.com
+    # Regional S3 and website endpoints are handled by a tightly scoped matcher.
+    kind: s3
+    review: true
+    reference: https://docs.aws.amazon.com/AmazonS3/latest/userguide/VirtualHosting.html
+  - name: AWS Elastic Beanstalk
+    suffixes:
+      - elasticbeanstalk.com
+    kind: suffix
+    review: true
+    reference: https://github.com/EdOverflow/can-i-take-over-xyz
+  - name: AWS CloudFront
+    suffixes:
+      - cloudfront.net
+    kind: suffix
+    review: false
+    reference: https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/CNAMEs.html
+  - name: AWS Elastic Load Balancing
+    suffixes:
+      - elb.amazonaws.com
+    kind: suffix
+    review: false
+    reference: https://docs.aws.amazon.com/elasticloadbalancing/latest/userguide/what-is-load-balancing.html
+  - name: AWS API Gateway
+    suffixes:
+      - amazonaws.com
+    kind: api_gateway
+    review: false
+    reference: https://docs.aws.amazon.com/apigateway/latest/developerguide/how-to-call-api.html
+

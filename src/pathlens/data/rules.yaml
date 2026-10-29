@@ -1,0 +1,21 @@
+version: 1
+rules:
+  - id: dangling-known-service
+    predicate: dangling_known_service
+    priority: high
+    title: Known service alias with an NXDOMAIN target
+    explanation: A CNAME target associated with a known service did not resolve. This is a review candidate, not proof of takeover.
+    action: Verify the DNS record and resource ownership before removing or changing anything.
+  - id: known-service-review
+    predicate: known_service
+    priority: medium
+    title: Alias points to a service with documented takeover considerations
+    explanation: The service is in the review list. DNS alone cannot show whether a resource is unclaimed.
+    action: Verify that the DNS alias and the corresponding resource are both owned and configured correctly.
+  - id: aws-infrastructure
+    predicate: aws_infrastructure
+    priority: info
+    title: AWS infrastructure indication
+    explanation: A CNAME or IP address matches an AWS indicator. This does not establish asset ownership or a vulnerability.
+    action: Verify ownership and whether this externally visible service is intended.
+
