@@ -116,6 +116,8 @@ Feodo 변환의 유효 종료 시각은 **PathLens의 수집 후 24시간 보관
 
 현재는 PathLens 자체 JSON 형식과 Feodo 추천 목록만 지원합니다. STIX/TAXII, 다크웹 수집, 자동 보고서 수집, CVE를 자산에 자동 연결하는 기능은 아직 없습니다. 자산의 소유권, 실제 취약점이나 침해 여부도 확인하지 않습니다.
 
+보고서 JSON에 `threat_feed`, 자산별 `threat_context`, `indicator_matches`가 추가됐습니다. 기존 결과를 사용하는 연동 코드에서는 이 새 필드를 허용해야 합니다.
+
 ## 규칙과 위험 목록
 
 `src/pathlens/data/rules.yaml`에 세 규칙이 있고 `services.yaml`에 대조할 서비스가 있습니다. `--rules`로 YAML 규칙 파일을 지정할 수 있습니다. 실행 가능한 코드나 임의의 식은 지원하지 않습니다.
