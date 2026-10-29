@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import plistlib
 from pathlib import Path
 
@@ -34,5 +35,6 @@ def make_launch_agent(python: Path, directory: Path, interval: int) -> dict:
 
 def write_launch_agent(output: Path, python: Path, directory: Path, interval: int) -> None:
     config = make_launch_agent(python, directory, interval)
-    with output.open("xb") as handle:
+    descriptor = os.open(output, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(descriptor, "wb") as handle:
         plistlib.dump(config, handle)

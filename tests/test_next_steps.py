@@ -1,5 +1,6 @@
 import json
 import plistlib
+import stat
 import sys
 from pathlib import Path
 
@@ -134,6 +135,7 @@ def test_launch_agent_generation_only_writes_requested_file(tmp_path):
     output = tmp_path / "agent.plist"
     write_launch_agent(output, Path(sys.executable), tmp_path, 3600)
     data = plistlib.loads(output.read_bytes())
+    assert stat.S_IMODE(output.stat().st_mode) & 0o077 == 0
     assert data["StartInterval"] == 3600
     assert data["RunAtLoad"] is False
     assert data["ProgramArguments"][-2:] == ["--cycles", "1"]
