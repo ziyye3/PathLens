@@ -210,6 +210,25 @@ class CVECorrelationSummary(StrictModel):
     match_count: int = 0
 
 
+class ProductKEVCandidate(StrictModel):
+    vendor: str
+    product: str
+    supplied_version: str | None = None
+    claimed_source: str
+    claimed_evidence: str
+    cve_id: str
+    kev_catalog_version: str
+    kev_description: str
+    kev_reference: str
+
+
+class ProductCorrelationSummary(StrictModel):
+    status: Literal["not_supplied", "loaded"] = "not_supplied"
+    catalog_version: str | None = None
+    observation_count: int = 0
+    candidate_count: int = 0
+
+
 class ExposureClaim(StrictModel):
     category: Literal["credential_exposure", "data_leak_claim"]
     source_name: str
@@ -235,6 +254,7 @@ class Asset(StrictModel):
     threat_context: list[ThreatContext] = Field(default_factory=list)
     indicator_matches: list[IndicatorMatch] = Field(default_factory=list)
     vulnerability_matches: list[VulnerabilityMatch] = Field(default_factory=list)
+    product_kev_candidates: list[ProductKEVCandidate] = Field(default_factory=list)
     exposure_claims: list[ExposureClaim] = Field(default_factory=list)
 
 
@@ -251,6 +271,9 @@ class Report(StrictModel):
         default_factory=lambda: ThreatFeedSummary(status="not_supplied")
     )
     cve_correlation: CVECorrelationSummary = Field(default_factory=CVECorrelationSummary)
+    product_correlation: ProductCorrelationSummary = Field(
+        default_factory=ProductCorrelationSummary
+    )
     exposure_correlation: ExposureSummary = Field(default_factory=ExposureSummary)
 
     def as_dict(self) -> dict[str, Any]:

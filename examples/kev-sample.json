@@ -5,6 +5,8 @@
   "vulnerabilities": [
     {
       "cveID": "CVE-2099-10001",
+      "vendorProject": "Example Vendor",
+      "product": "Example Product",
       "dateAdded": "2026-01-01",
       "shortDescription": "Synthetic example only; not a real CISA catalog entry.",
       "requiredAction": "Review the supplied claim; this is fictional data."

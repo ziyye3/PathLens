@@ -11,7 +11,15 @@ from pydantic import ValidationError
 from .analysis import analyze
 from .collectors import CollectionError, collect_live
 from .exposures import ExposureObservations, correlate_exposures
-from .kev import Catalog, Observations, correlate, fetch_catalog, load_json
+from .kev import (
+    Catalog,
+    Observations,
+    ProductObservations,
+    correlate,
+    correlate_products,
+    fetch_catalog,
+    load_json,
+)
 from .models import Snapshot, normalize_name
 from .output import write_report
 from .threat_intel import load_feed
@@ -34,6 +42,12 @@ def scan(
         Path | None, typer.Option(help="Explicit, authorized asset-CVE observations JSON.")
     ] = None,
     kev_catalog: Annotated[Path | None, typer.Option(help="CISA KEV catalog JSON.")] = None,
+    product_observations: Annotated[
+        Path | None, typer.Option(help="User-supplied asset/product observations JSON.")
+    ] = None,
+    fetch_kev: Annotated[
+        bool, typer.Option(help="Fetch the CISA KEV catalog; does not send the target domain.")
+    ] = False,
     exposure_observations: Annotated[
         Path | None, typer.Option(help="Minimal user-supplied exposure claims JSON.")
     ] = None,
@@ -48,12 +62,23 @@ def scan(
     try:
         domain = normalize_name(domain)
         feed = load_feed(threat_feed) if threat_feed else None
-        if bool(cve_observations) != bool(kev_catalog):
-            raise ValueError("Provide both --cve-observations and --kev-catalog")
+        if fetch_kev and kev_catalog:
+            raise ValueError("Choose either --fetch-kev or --kev-catalog")
+        if bool(cve_observations or product_observations) != bool(kev_catalog or fetch_kev):
+            raise ValueError("Provide CVE or product observations and a KEV catalog source")
         observations = (
             Observations.model_validate(load_json(cve_observations)) if cve_observations else None
         )
-        catalog = Catalog.model_validate(load_json(kev_catalog)) if kev_catalog else None
+        products = (
+            ProductObservations.model_validate(load_json(product_observations))
+            if product_observations
+            else None
+        )
+        catalog = (
+            fetch_catalog()
+            if fetch_kev
+            else (Catalog.model_validate(load_json(kev_catalog)) if kev_catalog else None)
+        )
         exposures = (
             ExposureObservations.model_validate(load_json(exposure_observations))
             if exposure_observations
@@ -74,6 +99,8 @@ def scan(
         )
         if observations is not None and catalog is not None:
             correlate(report, observations, catalog)
+        if products is not None and catalog is not None:
+            correlate_products(report, products, catalog)
         if exposures is not None:
             correlate_exposures(report, exposures)
         paths = write_report(report, raw, output)
@@ -104,6 +131,8 @@ def scan(
             )
         for match in asset.vulnerability_matches:
             typer.echo(f"  KEV: {match.cve_id}; supplied asset association requires verification.")
+        for candidate in asset.product_kev_candidates:
+            typer.echo(f"  Product/KEV candidate: {candidate.cve_id}; version is not verified.")
         for claim in asset.exposure_claims:
             typer.echo(f"  Exposure claim: {claim.category} ({claim.source_name}); unverified.")
     for path in paths:
@@ -160,6 +189,24 @@ def watch_feodo_command(
         raise typer.Exit(code=1) from exc
 
 
+@app.command("make-launch-agent")
+def make_launch_agent_command(
+    output: Annotated[Path, typer.Option(help="New plist file; not installed automatically.")],
+    directory: Annotated[Path, typer.Option(help="Existing absolute feed directory.")],
+    python: Annotated[Path, typer.Option(help="Absolute Python path in the PathLens environment.")],
+    interval: Annotated[int, typer.Option(min=300, help="Seconds between refreshes.")] = 3600,
+) -> None:
+    """Generate a macOS launch agent; does not register or start it."""
+    from .launch_agent import write_launch_agent
+
+    try:
+        write_launch_agent(output, python, directory, interval)
+    except (ValueError, OSError) as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(f"Wrote {output}; not registered or started.")
+
+
 @app.command("update-kev")
 def update_kev(
     output: Annotated[Path, typer.Option(help="New output file; never overwritten.")],
@@ -209,17 +256,33 @@ def import_taxii(
     url: Annotated[str, typer.Option(help="Authorized TAXII 2.1 collection objects URL.")],
     output: Annotated[Path, typer.Option(help="New output file; never overwritten.")],
     source_name: Annotated[str, typer.Option(help="Feed source name.")],
+    auth_method: Annotated[
+        str, typer.Option(help="Authentication: none, basic, or bearer.")
+    ] = "none",
 ) -> None:
-    """Fetch an explicitly selected unauthenticated TAXII collection."""
+    """Fetch an explicitly selected TAXII collection; credentials are prompted privately."""
     from .stix_import import import_stix
-    from .taxii import fetch_collection
+    from .taxii import fetch_collection, validate_collection_url
     from .threat_intel import Source
 
     try:
         if output.exists() or output.is_symlink():
             raise FileExistsError(f"Refusing to overwrite existing output: {output}")
         source = Source(name=source_name, url=url)
-        feed, skipped = import_stix(fetch_collection(url), source)
+        validate_collection_url(url)
+        basic = None
+        bearer = None
+        if auth_method == "basic":
+            username = typer.prompt("TAXII username")
+            password = typer.prompt("TAXII password", hide_input=True)
+            basic = (username, password)
+        elif auth_method == "bearer":
+            bearer = typer.prompt("TAXII bearer token", hide_input=True)
+        elif auth_method != "none":
+            raise ValueError("Authentication must be none, basic, or bearer")
+        feed, skipped = import_stix(
+            fetch_collection(url, basic_auth=basic, bearer_token=bearer), source
+        )
         with output.open("x", encoding="utf-8") as handle:
             handle.write(feed.model_dump_json(indent=2) + "\n")
     except (CollectionError, ValueError, OSError, ValidationError) as exc:

@@ -9,10 +9,22 @@ from typing import Any
 
 from .threat_intel import Indicator, Source, ThreatFeed
 
-_PATTERN = re.compile(r"^\[(domain-name|ipv4-addr|ipv6-addr):value = '([^'\\]+)'\]$")
+_CLAUSE = re.compile(r"^(domain-name|ipv4-addr|ipv6-addr):value = '([^'\\]+)'$")
 _INDICATOR_ID = re.compile(
     r"^indicator--[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
 )
+
+
+def _supported_clauses(pattern: Any) -> list[tuple[str, str]]:
+    if not isinstance(pattern, str) or not pattern.startswith("[") or not pattern.endswith("]"):
+        return []
+    parts = pattern[1:-1].split(" OR ")
+    if len(parts) > 100:
+        raise ValueError("STIX OR pattern exceeds the 100 alternative limit")
+    matches = [_CLAUSE.fullmatch(part) for part in parts]
+    if not all(matches):
+        return []
+    return [(match.group(1), match.group(2)) for match in matches]
 
 
 def import_stix(
@@ -44,20 +56,21 @@ def import_stix(
         if "revoked" in obj and not isinstance(obj["revoked"], bool):
             raise ValueError("Invalid STIX revoked status")
         pattern = obj.get("pattern")
-        match = _PATTERN.fullmatch(pattern) if isinstance(pattern, str) else None
-        if obj.get("revoked") is True or obj.get("spec_version") != "2.1" or not match:
+        clauses = _supported_clauses(pattern)
+        if obj.get("revoked") is True or obj.get("spec_version") != "2.1" or not clauses:
             skipped += 1
             continue
         if obj.get("pattern_type") != "stix":
             skipped += 1
             continue
-        if match.group(1) != "domain-name":
-            try:
-                version = ipaddress.ip_address(match.group(2)).version
-            except ValueError as exc:
-                raise ValueError("Invalid STIX IP value") from exc
-            if version != (4 if match.group(1) == "ipv4-addr" else 6):
-                raise ValueError("STIX IP type does not match its value")
+        for kind, value in clauses:
+            if kind != "domain-name":
+                try:
+                    version = ipaddress.ip_address(value).version
+                except ValueError as exc:
+                    raise ValueError("Invalid STIX IP value") from exc
+                if version != (4 if kind == "ipv4-addr" else 6):
+                    raise ValueError("STIX IP type does not match its value")
         valid_from = obj.get("valid_from")
         if not isinstance(valid_from, str):
             raise ValueError("STIX indicator missing valid_from")
@@ -79,16 +92,19 @@ def import_stix(
             raise ValueError("Invalid STIX valid_until")
         description = str(obj.get("description") or obj.get("name") or "STIX indicator")
         description = " ".join(description.split())[:1800] + note
-        indicators.append(
-            Indicator(
-                id=identifier,
-                type="domain" if match.group(1) == "domain-name" else "ip",
-                value=match.group(2),
-                description=description,
-                valid_from=start,
-                valid_until=end,
+        for index, (kind, value) in enumerate(clauses, start=1):
+            if len(indicators) >= 100_000:
+                raise ValueError("STIX converted indicator limit exceeded")
+            indicators.append(
+                Indicator(
+                    id=identifier if len(clauses) == 1 else f"{identifier}#or-{index}",
+                    type="domain" if kind == "domain-name" else "ip",
+                    value=value,
+                    description=description,
+                    valid_from=start,
+                    valid_until=end,
+                )
             )
-        )
     return ThreatFeed(
         schema_version="1.0", source=source, generated_at=now, indicators=indicators
     ), skipped

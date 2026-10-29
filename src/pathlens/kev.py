@@ -13,6 +13,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from .collectors import _read_json
 from .models import (
     CVECorrelationSummary,
+    ProductCorrelationSummary,
+    ProductKEVCandidate,
     Report,
     StrictModel,
     VulnerabilityMatch,
@@ -49,12 +51,37 @@ class Observations(StrictModel):
     observations: list[CVEObservation] = Field(max_length=20_000)
 
 
+class ProductObservation(StrictModel):
+    asset: str
+    vendor: str = Field(min_length=1, max_length=200)
+    product: str = Field(min_length=1, max_length=200)
+    version: str | None = Field(default=None, min_length=1, max_length=200)
+    source_url: str = Field(max_length=2048)
+    evidence: str = Field(min_length=1, max_length=1000)
+
+    _name = field_validator("asset")(normalize_name)
+    _source = field_validator("source_url")(validate_https_url)
+    _text = field_validator("vendor", "product", "evidence")(validate_text)
+
+    @field_validator("version")
+    @classmethod
+    def valid_version(cls, value: str | None) -> str | None:
+        return validate_text(value) if value is not None else None
+
+
+class ProductObservations(StrictModel):
+    schema_version: Literal["1.0"]
+    observations: list[ProductObservation] = Field(max_length=20_000)
+
+
 class KEVEntry(BaseModel):
     model_config = ConfigDict(extra="allow")
     cveID: str
     dateAdded: str
     shortDescription: str
     requiredAction: str
+    vendorProject: str | None = None
+    product: str | None = None
 
     @field_validator("cveID")
     @classmethod
@@ -132,6 +159,62 @@ def correlate(report: Report, observations: Observations, catalog: Catalog) -> N
     limitation = (
         "CVE-to-asset evidence and the catalog are supplied by the user; neither is independently "
         "verified. KEV inclusion does not prove this asset is affected or compromised."
+    )
+    if limitation not in report.limitations:
+        report.limitations.append(limitation)
+
+
+def _product_key(vendor: str, product: str) -> tuple[str, str]:
+    return (" ".join(vendor.split()).casefold(), " ".join(product.split()).casefold())
+
+
+def correlate_products(report: Report, observations: ProductObservations, catalog: Catalog) -> None:
+    assets = {asset.name: asset for asset in report.assets}
+    index: dict[tuple[str, str], list[KEVEntry]] = {}
+    for entry in catalog.vulnerabilities:
+        if entry.vendorProject and entry.product:
+            index.setdefault(_product_key(entry.vendorProject, entry.product), []).append(entry)
+    results: dict[str, list[ProductKEVCandidate]] = {name: [] for name in assets}
+    missing = 0
+    count = 0
+    for item in observations.observations:
+        if not in_scope(item.asset, report.domain):
+            raise ValueError("Product observation asset is outside the requested domain")
+        if item.asset not in assets:
+            missing += 1
+            continue
+        for entry in index.get(_product_key(item.vendor, item.product), []):
+            count += 1
+            if count > 2_000:
+                raise ValueError("Product-KEV candidate limit exceeded; narrow the inventory")
+            results[item.asset].append(
+                ProductKEVCandidate(
+                    vendor=item.vendor,
+                    product=item.product,
+                    supplied_version=item.version,
+                    claimed_source=item.source_url,
+                    claimed_evidence=item.evidence,
+                    cve_id=entry.cveID,
+                    kev_catalog_version=catalog.catalogVersion,
+                    kev_description=entry.shortDescription,
+                    kev_reference=KEV_REFERENCE,
+                )
+            )
+    for name, asset in assets.items():
+        asset.product_kev_candidates = results[name]
+    if missing:
+        report.warnings.append(
+            f"{missing} product observations refer to assets not discovered in this run."
+        )
+    report.product_correlation = ProductCorrelationSummary(
+        status="loaded",
+        catalog_version=catalog.catalogVersion,
+        observation_count=len(observations.observations),
+        candidate_count=count,
+    )
+    limitation = (
+        "Product observations are user-supplied; exact vendor/product names are only candidate "
+        "links. Versions, product deployment, vulnerability and compromise are not verified."
     )
     if limitation not in report.limitations:
         report.limitations.append(limitation)

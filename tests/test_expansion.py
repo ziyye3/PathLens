@@ -80,7 +80,7 @@ def test_stix_unsupported_revoked_and_unbounded_expiry(stix):
     assert (feed.indicators[0].valid_until - feed.indicators[0].valid_from).days == 30
     assert "30-day" in feed.indicators[0].description
     indicator["pattern"] = (
-        "[domain-name:value = 'example.com' OR domain-name:value = 'other.example']"
+        "[domain-name:value = 'example.com' AND domain-name:value = 'other.example']"
     )
     assert import_stix(stix, source())[1] == 1
     indicator["revoked"] = True

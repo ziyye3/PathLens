@@ -27,6 +27,8 @@ def markdown(report: Report) -> str:
         f"- CVE correlation: {_text(report.cve_correlation.status)}; "
         f"{report.cve_correlation.observation_count} supplied observations; "
         f"{report.cve_correlation.match_count} KEV matches.",
+        f"- Product/KEV correlation: {_text(report.product_correlation.status)}; "
+        f"{report.product_correlation.candidate_count} candidates.",
         f"- Exposure claims: {_text(report.exposure_correlation.status)}; "
         f"{report.exposure_correlation.observation_count} supplied; "
         f"{report.exposure_correlation.match_count} associated.",
@@ -116,6 +118,20 @@ def markdown(report: Report) -> str:
                 f"- Reference: {_text(match.kev_reference)}",
                 "- Association is supplied, not verified; a catalog match does not establish "
                 "that this asset is vulnerable or compromised.",
+            ]
+        for item in asset.product_kev_candidates:
+            lines += [
+                "",
+                f"#### Product/KEV candidate: {_text(item.cve_id)}",
+                "",
+                f"- Supplied product: {_text(item.vendor)} / {_text(item.product)} "
+                f"(version: {_text(item.supplied_version or 'not supplied')})",
+                f"- Claimed source: {_text(item.claimed_source)}; {_text(item.claimed_evidence)}",
+                f"- KEV catalog version: {_text(item.kev_catalog_version)}; "
+                f"{_text(item.kev_reference)}",
+                f"- Catalog description: {_text(item.kev_description)}",
+                "- Exact vendor/product name match only; product, version, vulnerability "
+                "and compromise are not verified.",
             ]
         for claim in asset.exposure_claims:
             lines += [

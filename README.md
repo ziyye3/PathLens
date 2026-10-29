@@ -76,7 +76,7 @@ MCP 서버는 기본적으로 stdio를 사용합니다. 로그와 프로토콜 �
 - `analyze_snapshot`: JSON 스냅샷을 네트워크 없이 분석합니다.
 - `scan_domain`: 도메인과 `authorized: true`를 전달한 경우 공개 정보 조회를 수행합니다. MCP 호스트에서는 조회 전에 사용자가 도메인과 외부 전송을 확인해야 합니다.
 
-두 도구 모두 `threat_feed`, `cve_observations`, `kev_catalog`, `exposure_observations` 인자에 아래 형식의 JSON 객체를 선택적으로 전달할 수 있습니다. CVE 관찰값과 KEV 목록은 쌍으로 제공해야 합니다. 파일 경로를 전달하거나 피드를 자동으로 내려받지 않습니다. 반환값은 자산별 분석과 각 입력의 처리 상태를 포함합니다.
+두 도구 모두 `threat_feed`, `cve_observations`, `product_observations`, `kev_catalog`, `exposure_observations` 인자에 아래 형식의 JSON 객체를 선택적으로 전달할 수 있습니다. CVE 또는 제품 관찰값은 KEV 목록과 함께 제공해야 합니다. 파일 경로를 전달하거나 피드를 자동으로 내려받지 않습니다. 반환값은 자산별 분석과 각 입력의 처리 상태를 포함합니다.
 
 ## 위협 인텔리전스
 
@@ -116,27 +116,47 @@ Feodo 변환의 유효 종료 시각은 **PathLens의 수집 후 24시간 보관
 
 ### STIX·TAXII 입력
 
-STIX 2.1 bundle에서 단일 도메인·IPv4·IPv6의 정확한 일치 패턴만 변환합니다. 복합 패턴 등 지원하지 않는 객체는 건너뛰고 개수를 표시합니다. 폐기된 지표는 가져오지 않으며, 동일 ID의 여러 버전은 오류로 처리합니다. 공유 제한 표시가 있는 지표는 표시를 제거해 유출하지 않도록 전체 가져오기를 중단합니다. 유효 종료일이 없으면 시작일로부터 30일을 PathLens의 임시 기준으로 적용하고 설명에 표시합니다. 이것은 전체 STIX 표준 검증이나 전체 패턴 지원이 아닙니다.
+STIX 2.1 bundle에서 단일 도메인·IPv4·IPv6의 정확한 일치 패턴과 이런 조건의 단순 `OR` 결합을 변환합니다. `AND`, 시간 조건, 정규식 등 지원하지 않는 객체는 건너뛰고 개수를 표시합니다. `OR` 지표의 각 대안에는 원본 ID와 대안 번호를 함께 부여합니다. 폐기된 지표는 가져오지 않으며, 동일 ID의 여러 버전은 오류로 처리합니다. 공유 제한 표시가 있는 지표는 표시를 제거해 유출하지 않도록 전체 가져오기를 중단합니다. 유효 종료일이 없으면 시작일로부터 30일을 PathLens의 임시 기준으로 적용하고 설명에 표시합니다. 이것은 전체 STIX 표준 검증이나 전체 패턴 지원이 아닙니다.
 
 ```bash
 pathlens import-stix examples/sample-stix.json --output /tmp/pathlens-stix-demo.json \
   --source-name 'Synthetic example' --source-url https://example.com/stix
 ```
 
-명시적으로 접근 허가된 공개 TAXII 2.1 collection의 `/objects/` HTTPS 주소도 입력할 수 있습니다. 현재 인증이 필요 없는 엔드포인트와 `next` 토큰 방식 페이지 이동만 지원합니다. 인증 정보나 쿼리 문자열을 URL에 넣을 수 없으며, 리디렉션은 따라가지 않습니다. 페이지가 불완전하거나 제한을 넘으면 가져오기를 중단합니다. 원격 TAXII 서버와의 실연은 아직 검증하지 않았습니다.
+명시적으로 접근 허가된 TAXII 2.1 collection의 `/objects/` HTTPS 주소도 입력할 수 있습니다. 인증 없음, HTTP Basic과 Bearer 방식을 지원합니다. 인증 정보는 명령행 인자가 아니라 실행 중 입력받으며 피드 파일에 기록하지 않습니다. 입력한 서버로 인증 정보가 전송되므로 주소와 권한을 먼저 확인하세요. URL에 인증 정보·쿼리 문자열을 넣을 수 없으며 리디렉션은 따라가지 않습니다. `next` 토큰 방식 페이지 이동을 지원하고, 페이지가 불완전하거나 제한을 넘으면 가져오기를 중단합니다. 실제 인증 서버와의 실연은 아직 검증하지 않았습니다.
 
 ```bash
 pathlens import-taxii --url https://YOUR-AUTHORIZED-SERVER/api/collections/ID/objects/ \
   --source-name 'Authorized collection' --output /tmp/pathlens-taxii.json
 ```
 
+Basic 또는 Bearer 인증이 필요한 경우 `--auth-method basic` 또는 `--auth-method bearer`를 추가하세요. 비밀번호와 토큰은 보이지 않게 입력받습니다. 인증 정보와 제한된 피드는 공개 저장소에 올리지 마세요.
+
 ### 피드의 주기적 갱신
 
-다음 명령은 실행 중인 **포그라운드 프로세스**에서만 Feodo 피드를 갱신합니다. 지정한 폴더가 미리 있어야 하며 각 결과는 새 파일로 저장됩니다. 종료하려면 Ctrl+C를 누르세요. 백그라운드 서비스나 운영체제 스케줄은 설치하지 않습니다. 기본 간격은 1시간이며 최소 5분입니다.
+다음 명령은 실행 중인 **포그라운드 프로세스**에서만 Feodo 피드를 갱신합니다. 지정한 폴더가 미리 있어야 하며 각 결과는 새 파일로 저장됩니다. 종료하려면 Ctrl+C를 누르세요. 기본 간격은 1시간이며 최소 5분입니다.
 
 ```bash
 pathlens watch-feodo --directory /tmp --interval 3600
 ```
+
+macOS에서는 `make-launch-agent`가 백그라운드 주기 갱신용 설정 파일을 생성할 수 있습니다. 파일 생성만 하며, 사용자의 시스템에 등록하거나 실행하지 않습니다. Python 경로는 PathLens가 설치된 환경의 절대 경로여야 합니다. 파일을 생성하기 전 경로를 본인의 환경에 맞게 바꾸세요.
+
+```bash
+pathlens make-launch-agent --python /absolute/path/to/venv/bin/python \
+  --directory /absolute/path/to/feed-directory --interval 3600 \
+  --output /absolute/path/to/org.pathlens.feodo-refresh.plist
+```
+
+생성한 설정을 macOS에 등록하는 것은 별도의 사용자 작업입니다. 다음 명령의 파일 경로를 생성한 plist의 실제 절대 경로로 바꾼 뒤에만 실행하세요. 등록하면 Feodo에 주기적으로 접속하고 지정한 폴더에 새 스냅샷이 쌓입니다. 중지해도 기존 파일은 삭제하지 않습니다.
+
+```bash
+launchctl bootstrap "gui/$(id -u)" /absolute/path/to/org.pathlens.feodo-refresh.plist
+launchctl print "gui/$(id -u)/org.pathlens.feodo-refresh"
+launchctl bootout "gui/$(id -u)/org.pathlens.feodo-refresh"
+```
+
+다시 로그인한 뒤에도 사용하려면 macOS의 사용자 LaunchAgents 경로와 소유권·권한 요구사항을 별도로 확인해야 합니다. 절전 중 놓친 실행은 건너뛰어질 수 있습니다. 실제 launchd 등록·백그라운드 실행은 아직 테스트하지 않았습니다.
 
 ### CVE와 CISA KEV 연결
 
@@ -151,6 +171,16 @@ pathlens scan example.com --snapshot examples/sample.json \
 
 위 예제의 CVE와 KEV 항목은 모두 가짜입니다. 실제 사용 시에는 `--kev-catalog`에 CISA에서 받은 파일과 허가된 자산에 대한 근거를 사용하세요. 두 파일은 함께 제공해야 합니다.
 
+`examples/product-observations.json`처럼 자산의 제품명에 대한 단서를 제공하면, CISA KEV에서 **벤더명과 제품명이 정확히 일치하는 CVE 후보**를 자동으로 연결할 수 있습니다. `--fetch-kev`를 지정하면 분석 시 CISA의 공개 목록을 직접 가져오며 대상 도메인은 CISA에 전송하지 않습니다. 제품의 배포 여부와 버전·취약 여부는 확인하지 않으므로 결과는 후보일 뿐입니다. 카탈로그의 제품명과 정확히 다르면 일치하지 않을 수 있습니다.
+
+```bash
+pathlens scan example.com --snapshot examples/sample.json \
+  --product-observations examples/product-observations.json \
+  --kev-catalog examples/kev-sample.json --output pathlens-output/product-example
+```
+
+실제 목록 사용 시 `--kev-catalog` 대신 `--fetch-kev`를 지정할 수 있습니다. 두 옵션을 동시에 사용할 수 없습니다.
+
 ### 유출 주장 입력
 
 `examples/exposure-observations.json`처럼 사용자가 적법하게 확보한 **주장의 최소 메타데이터**만 입력할 수 있습니다. 도메인, 분류, 출처, 시각만 받으며 비밀번호·토큰·이메일·유출 원문 필드는 허용하지 않습니다. 출처 이름이나 URL에도 민감정보를 넣지 마세요. PathLens는 다크웹에 접속하거나 내용을 검증하지 않으며, 결과는 사용자 제공의 미검증 주장입니다.
@@ -161,7 +191,7 @@ pathlens scan example.com --snapshot examples/sample.json \
   --output pathlens-output/exposure-example
 ```
 
-현재 자동 다크웹 수집, 인증이 필요한 TAXII 연결, 모든 STIX 패턴, 자산 소유권·실제 취약점·침해 확인은 지원하지 않습니다. 각 입력에 대한 제공처의 권한과 이용 조건을 사용자가 확인해야 합니다.
+현재 자동 다크웹 수집, 모든 STIX 패턴, 자산 소유권·실제 취약점·침해 확인은 지원하지 않습니다. 각 입력에 대한 제공처의 권한과 이용 조건을 사용자가 확인해야 합니다.
 
 보고서 JSON에 `threat_feed`, 자산별 `threat_context`, `indicator_matches`가 추가됐습니다. 기존 결과를 사용하는 연동 코드에서는 이 새 필드를 허용해야 합니다.
 

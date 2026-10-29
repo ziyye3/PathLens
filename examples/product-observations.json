@@ -1,0 +1,13 @@
+{
+  "schema_version": "1.0",
+  "observations": [
+    {
+      "asset": "cdn.example.com",
+      "vendor": "Example Vendor",
+      "product": "Example Product",
+      "version": "1.0",
+      "source_url": "https://example.com/synthetic-product-evidence",
+      "evidence": "Synthetic product observation; not evidence of real deployment."
+    }
+  ]
+}
